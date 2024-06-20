@@ -51,6 +51,7 @@ func (c *geyserClient) Subscribe(ctx context.Context, opts ...grpc.CallOption) (
 type Geyser_SubscribeClient interface {
 	Send(*SubscribeRequest) error
 	Recv() (*SubscribeUpdate, error)
+	Response() (<-chan *SubscribeUpdate, <-chan error)
 	grpc.ClientStream
 }
 
@@ -68,6 +69,26 @@ func (x *geyserSubscribeClient) Recv() (*SubscribeUpdate, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (x *geyserSubscribeClient) Response() (<-chan *SubscribeUpdate, <-chan error) {
+	updates := make(chan *SubscribeUpdate)
+	errors := make(chan error)
+
+	go func(updChan chan<- *SubscribeUpdate, errChan chan<- error) {
+		defer close(updChan)
+		defer close(errChan)
+		for {
+			m := new(SubscribeUpdate)
+			if err := x.ClientStream.RecvMsg(m); err != nil {
+				errChan <- err
+				return
+			}
+			updChan <- m
+		}
+	}(updates, errors)
+
+	return updates, errors
 }
 
 func (c *geyserClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PongResponse, error) {

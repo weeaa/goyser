@@ -5,13 +5,11 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/weeaa/goyser/pb"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 )
 
 func TestMain(m *testing.M) {
@@ -21,8 +19,7 @@ func TestMain(m *testing.M) {
 }
 
 func Test_GeyserClient(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	rpcAddr, ok := os.LookupEnv("GEYSER_RPC")
 	if !assert.True(t, ok, "getting GEYSER_RPC from .env") {
@@ -41,38 +38,23 @@ func Test_GeyserClient(t *testing.T) {
 		t.FailNow()
 	}
 	defer client.GrpcConn.Close()
-	subscription := &pb.SubscribeRequest{}
 
-	subscription.Accounts = make(map[string]*pb.SubscribeRequestFilterAccounts)
-	subscription.Slots = make(map[string]*pb.SubscribeRequestFilterSlots)
-	subscription.Accounts["feur"] = &pb.SubscribeRequestFilterAccounts{
-		Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
+	if err = client.NewSubscribeClient("main", ctx); err != nil {
+		t.Fatal(err)
 	}
-	subscription.Slots["slots"] = &pb.SubscribeRequestFilterSlots{}
+	stream := client.Streams["main"]
+	defer client.DefaultStreamClient.Geyser.CloseSend()
 
-	if err = client.DefaultStreamClient.Geyser.Send(subscription); err != nil {
+	if err = stream.SubscribeSlots("slots", &pb.SubscribeRequestFilterSlots{}); err != nil {
+		t.Fatal(err)
+	}
+	if err = stream.SubscribeAccounts("accounts", &pb.SubscribeRequestFilterAccounts{
+		Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
-	var hb int32 = 0
-	for {
-		r, err := client.DefaultStreamClient.Geyser.Recv()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err == io.EOF {
-			break
-		}
-
-		if r.GetPing() != nil {
-			hb++
-			client.DefaultStreamClient.Geyser.Send(&pb.SubscribeRequest{
-				Ping: &pb.SubscribeRequestPing{
-					Id: hb,
-				},
-			})
-		}
-
-		log.Printf("%+v", r)
+	for out := range stream.Ch {
+		log.Printf("%+v", out)
 	}
 }

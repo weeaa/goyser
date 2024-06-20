@@ -13,6 +13,7 @@ type Client struct {
 	Ctx      context.Context
 
 	Geyser               pb.GeyserClient
+	Streams              map[string]*StreamClient
 	DefaultStreamClient  *StreamClient
 	DefaultAccountFilter *pb.SubscribeRequestFilterAccounts
 	mu                   sync.Mutex
@@ -24,8 +25,9 @@ type StreamClient struct {
 	Ctx     context.Context
 	Geyser  pb.Geyser_SubscribeClient
 	Request *pb.SubscribeRequest
-	Ch      chan *pb.SubscribeUpdate
-	ErrCh   chan<- error
+
+	Ch    <-chan *pb.SubscribeUpdate
+	ErrCh <-chan error
 }
 
 func New(ctx context.Context, grpcDialURL string) (*Client, error) {
@@ -49,6 +51,7 @@ func New(ctx context.Context, grpcDialURL string) (*Client, error) {
 		GrpcConn: conn,
 		Ctx:      ctx,
 		Geyser:   geyserClient,
+		Streams:  make(map[string]*StreamClient),
 		DefaultStreamClient: &StreamClient{
 			Geyser: subscribe,
 			Ctx:    ctx,
@@ -59,18 +62,34 @@ func New(ctx context.Context, grpcDialURL string) (*Client, error) {
 	}, nil
 }
 
-// NewSubscribeClient creates a new Geyser stream client.
-func (c *Client) NewSubscribeClient(name string, ctx context.Context) (*StreamClient, error) {
+// NewSubscribeClient creates a new Geyser subscribe stream client.
+func (c *Client) NewSubscribeClient(name string, ctx context.Context) error {
 	stream, err := c.Geyser.Subscribe(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &StreamClient{
+	streamClient := &StreamClient{
 		Ctx:    ctx,
 		Geyser: stream,
-		Ch:     make(chan *pb.SubscribeUpdate),
-	}, nil
+		Request: &pb.SubscribeRequest{
+			Accounts:           make(map[string]*pb.SubscribeRequestFilterAccounts),
+			Slots:              make(map[string]*pb.SubscribeRequestFilterSlots),
+			Transactions:       make(map[string]*pb.SubscribeRequestFilterTransactions),
+			TransactionsStatus: make(map[string]*pb.SubscribeRequestFilterTransactions),
+			Blocks:             make(map[string]*pb.SubscribeRequestFilterBlocks),
+			BlocksMeta:         make(map[string]*pb.SubscribeRequestFilterBlocksMeta),
+			Entry:              make(map[string]*pb.SubscribeRequestFilterEntry),
+			AccountsDataSlice:  make([]*pb.SubscribeRequestAccountsDataSlice, 0),
+		},
+		Ch:    make(chan *pb.SubscribeUpdate),
+		ErrCh: make(chan error),
+	}
+
+	c.Streams[name] = streamClient
+	streamClient.listen()
+
+	return nil
 }
 
 func (c *Client) SetDefaultSubscribeClient(client pb.Geyser_SubscribeClient) *Client {
@@ -80,28 +99,46 @@ func (c *Client) SetDefaultSubscribeClient(client pb.Geyser_SubscribeClient) *Cl
 	return c
 }
 
-func (s *StreamClient) AddAccounts(id string, accounts ...string) error {
-	s.Request.Accounts[id] = &pb.SubscribeRequestFilterAccounts{Account: accounts}
+func (s *StreamClient) SubscribeAccounts(id string, req *pb.SubscribeRequestFilterAccounts) error {
+	s.Request.Accounts[id] = req
 	return s.Geyser.Send(s.Request)
 }
 
-func (s *StreamClient) Listen() {
-	for {
-		select {
-		case <-s.Ctx.Done():
-			s.ErrCh <- s.Ctx.Err()
-		default:
-			recv, err := s.Geyser.Recv()
-			if err != nil {
-				s.ErrCh <- err
-				continue
-			}
-
-			go s.dispatch(recv)
-		}
-	}
+func (s *StreamClient) SubscribeSlots(id string, req *pb.SubscribeRequestFilterSlots) error {
+	s.Request.Slots[id] = req
+	return s.Geyser.Send(s.Request)
 }
 
-func (s *StreamClient) dispatch(update *pb.SubscribeUpdate) {
-	s.Ch <- update
+func (s *StreamClient) SubscribeTransaction(id string, req *pb.SubscribeRequestFilterTransactions) error {
+	s.Request.Transactions[id] = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) SubscribeTransactionStatus(id string, req *pb.SubscribeRequestFilterTransactions) error {
+	s.Request.TransactionsStatus[id] = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) SubscribeBlocks(id string, req *pb.SubscribeRequestFilterBlocks) error {
+	s.Request.Blocks[id] = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) SubscribeBlocksMeta(id string, req *pb.SubscribeRequestFilterBlocksMeta) error {
+	s.Request.BlocksMeta[id] = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) SubscribeEntry(id string, req *pb.SubscribeRequestFilterEntry) error {
+	s.Request.Entry[id] = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) SubscribeAccountDataSlice(req []*pb.SubscribeRequestAccountsDataSlice) error {
+	s.Request.AccountsDataSlice = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) listen() {
+	s.Ch, s.ErrCh = s.Geyser.Response()
 }
