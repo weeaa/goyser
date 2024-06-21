@@ -15,7 +15,6 @@ This library contains tooling to interact with **[Yellowstone Geyser Plugin](htt
 - [Installing](#-installing)
 - [Examples](#-examples)
   - [Subscribe to Slots & Account](#subscribe-to-slots-and-account)
-- [Disclaimer](#-disclaimer)
 - [Support](#-support)
 - [License](#-license)
 
@@ -97,19 +96,15 @@ func main() {
   for out := range stream.Ch {
     switch {
     case out.GetSlot() != nil:
-      log.Printf("slot updata: %+v", out.GetSlot())
+      log.Printf("slot update: %+v", out.GetSlot())
     case out.GetTransaction() != nil:
-      log.Printf("tx updata: %+v", out.GetTransaction())
+      log.Printf("tx update: %+v", out.GetTransaction())
     default:
-      log.Printf("other updqte: %+v", out)
+      log.Printf("other update: %+v", out)
     }
   }
 }
 ```
-
-## 🚨 Disclaimer
-
-**This library is not affiliated with Jito Labs**. It is a community project and is not officially supported by Jito Labs. Use at your own risk.
 
 ## 🛟 Support
 If my work has been useful in building your for-profit services/infra/bots/etc, consider donating at
