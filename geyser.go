@@ -20,11 +20,11 @@ type Client struct {
 }
 
 type StreamClient struct {
-	Ctx     context.Context            // Context for cancellation and deadlines
-	Geyser  pb.Geyser_SubscribeClient  // Geyser subscribe client
-	Request *pb.SubscribeRequest       // Subscribe request
-	Ch      <-chan *pb.SubscribeUpdate // Channel for updates
-	ErrCh   <-chan error               // Channel for errors
+	Ctx     context.Context           // Context for cancellation and deadlines
+	Geyser  pb.Geyser_SubscribeClient // Geyser subscribe client
+	Request *pb.SubscribeRequest      // Subscribe request
+	Ch      chan *pb.SubscribeUpdate  // Channel for updates
+	ErrCh   chan error                // Channel for errors
 }
 
 func New(ctx context.Context, grpcDialURL string) (*Client, error) {
@@ -179,5 +179,12 @@ func (s *StreamClient) SubscribeAccountDataSlice(req []*pb.SubscribeRequestAccou
 
 // listen starts listening for responses and errors.
 func (s *StreamClient) listen() {
-	s.Ch, s.ErrCh = s.Geyser.Response()
+	for {
+		recv, err := s.Geyser.Recv()
+		if err != nil {
+			panic(err)
+		}
+
+		s.Ch <- recv
+	}
 }

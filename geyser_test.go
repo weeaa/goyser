@@ -44,7 +44,6 @@ func Test_GeyserClient(t *testing.T) {
 	}
 
 	stream := client.Streams["main"]
-	subReqAccount := stream.Request.Accounts["myfilter"]
 
 	defer client.DefaultStreamClient.Geyser.CloseSend()
 
