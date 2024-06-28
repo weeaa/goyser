@@ -42,7 +42,10 @@ func Test_GeyserClient(t *testing.T) {
 	if err = client.NewSubscribeClient("main", ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	stream := client.Streams["main"]
+	subReqAccount := stream.Request.Accounts["myfilter"]
+
 	defer client.DefaultStreamClient.Geyser.CloseSend()
 
 	if err = stream.SubscribeSlots("slots", &pb.SubscribeRequestFilterSlots{}); err != nil {

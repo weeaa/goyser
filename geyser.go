@@ -60,7 +60,7 @@ func New(ctx context.Context, grpcDialURL string) (*Client, error) {
 }
 
 // NewSubscribeClient creates a new Geyser subscribe stream client.
-func (c *Client) NewSubscribeClient(name string, ctx context.Context) error {
+func (c *Client) NewSubscribeClient(ctx context.Context, clientName string) error {
 	stream, err := c.Geyser.Subscribe(ctx)
 	if err != nil {
 		return err
@@ -83,7 +83,7 @@ func (c *Client) NewSubscribeClient(name string, ctx context.Context) error {
 		ErrCh: make(chan error),
 	}
 
-	c.Streams[name] = streamClient
+	c.Streams[clientName] = streamClient
 	streamClient.listen()
 
 	return nil
@@ -100,74 +100,74 @@ func (c *Client) SetDefaultSubscribeClient(client pb.Geyser_SubscribeClient) *Cl
 // SubscribeAccounts subscribes to account updates.
 // Note: This will overwrite existing subscriptions for the given ID.
 // To add new accounts without overwriting, use AppendAccounts.
-func (s *StreamClient) SubscribeAccounts(id string, req *pb.SubscribeRequestFilterAccounts) error {
-	s.Request.Accounts[id] = req
+func (s *StreamClient) SubscribeAccounts(filterName string, req *pb.SubscribeRequestFilterAccounts) error {
+	s.Request.Accounts[filterName] = req
 	return s.Geyser.Send(s.Request)
 }
 
 // AppendAccounts appends accounts to an existing subscription and sends the request.
-func (s *StreamClient) AppendAccounts(id string, accounts ...string) error {
-	s.Request.Accounts[id].Account = append(s.Request.Accounts[id].Account, accounts...)
+func (s *StreamClient) AppendAccounts(filterName string, accounts ...string) error {
+	s.Request.Accounts[filterName].Account = append(s.Request.Accounts[filterName].Account, accounts...)
 	return s.Geyser.Send(s.Request)
 }
 
 // UnsubscribeAccountsByID unsubscribes from account updates by ID.
-func (s *StreamClient) UnsubscribeAccountsByID(id string) {
-	delete(s.Request.Accounts, id)
+func (s *StreamClient) UnsubscribeAccountsByID(filterName string) {
+	delete(s.Request.Accounts, filterName)
 }
 
 // UnsubscribeAccounts unsubscribes specific accounts.
-func (s *StreamClient) UnsubscribeAccounts(id string, accounts ...string) {
+func (s *StreamClient) UnsubscribeAccounts(filterName string, accounts ...string) {
 	for _, account := range accounts {
-		s.Request.Accounts[id].Account = slices.DeleteFunc(s.Request.Accounts[id].Account, func(a string) bool {
+		s.Request.Accounts[filterName].Account = slices.DeleteFunc(s.Request.Accounts[filterName].Account, func(a string) bool {
 			return a == account
 		})
 	}
 }
 
 // SubscribeSlots subscribes to slot updates.
-func (s *StreamClient) SubscribeSlots(id string, req *pb.SubscribeRequestFilterSlots) error {
-	s.Request.Slots[id] = req
+func (s *StreamClient) SubscribeSlots(filterName string, req *pb.SubscribeRequestFilterSlots) error {
+	s.Request.Slots[filterName] = req
 	return s.Geyser.Send(s.Request)
 }
 
 // UnsubscribeSlots unsubscribes from slot updates.
-func (s *StreamClient) UnsubscribeSlots(id string) {
-	delete(s.Request.Slots, id)
+func (s *StreamClient) UnsubscribeSlots(filterName string) {
+	delete(s.Request.Slots, filterName)
 }
 
 // SubscribeTransaction subscribes to transaction updates.
-func (s *StreamClient) SubscribeTransaction(id string, req *pb.SubscribeRequestFilterTransactions) error {
-	s.Request.Transactions[id] = req
+func (s *StreamClient) SubscribeTransaction(filterName string, req *pb.SubscribeRequestFilterTransactions) error {
+	s.Request.Transactions[filterName] = req
 	return s.Geyser.Send(s.Request)
 }
 
 // UnsubscribeTransaction unsubscribes from transaction updates.
-func (s *StreamClient) UnsubscribeTransaction(id string) {
-	delete(s.Request.Transactions, id)
+func (s *StreamClient) UnsubscribeTransaction(filterName string) {
+	delete(s.Request.Transactions, filterName)
 }
 
 // SubscribeTransactionStatus subscribes to transaction status updates.
-func (s *StreamClient) SubscribeTransactionStatus(id string, req *pb.SubscribeRequestFilterTransactions) error {
-	s.Request.TransactionsStatus[id] = req
+func (s *StreamClient) SubscribeTransactionStatus(filterName string, req *pb.SubscribeRequestFilterTransactions) error {
+	s.Request.TransactionsStatus[filterName] = req
 	return s.Geyser.Send(s.Request)
 }
 
 // SubscribeBlocks subscribes to block updates.
-func (s *StreamClient) SubscribeBlocks(id string, req *pb.SubscribeRequestFilterBlocks) error {
-	s.Request.Blocks[id] = req
+func (s *StreamClient) SubscribeBlocks(filterName string, req *pb.SubscribeRequestFilterBlocks) error {
+	s.Request.Blocks[filterName] = req
 	return s.Geyser.Send(s.Request)
 }
 
 // SubscribeBlocksMeta subscribes to block metadata updates.
-func (s *StreamClient) SubscribeBlocksMeta(id string, req *pb.SubscribeRequestFilterBlocksMeta) error {
-	s.Request.BlocksMeta[id] = req
+func (s *StreamClient) SubscribeBlocksMeta(filterName string, req *pb.SubscribeRequestFilterBlocksMeta) error {
+	s.Request.BlocksMeta[filterName] = req
 	return s.Geyser.Send(s.Request)
 }
 
 // SubscribeEntry subscribes to entry updates.
-func (s *StreamClient) SubscribeEntry(id string, req *pb.SubscribeRequestFilterEntry) error {
-	s.Request.Entry[id] = req
+func (s *StreamClient) SubscribeEntry(filterName string, req *pb.SubscribeRequestFilterEntry) error {
+	s.Request.Entry[filterName] = req
 	return s.Geyser.Send(s.Request)
 }
 
