@@ -4,7 +4,7 @@
 // - protoc             v4.25.3
 // source: geyser.proto
 
-package goyser_proto
+package geyser_pb
 
 import (
 	context "context"
