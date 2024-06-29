@@ -39,7 +39,7 @@ func Test_GeyserClient(t *testing.T) {
 	}
 	defer client.GrpcConn.Close()
 
-	if err = client.NewSubscribeClient("main", ctx); err != nil {
+	if err = client.NewSubscribeClient(ctx, "main"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,10 +47,10 @@ func Test_GeyserClient(t *testing.T) {
 
 	defer client.DefaultStreamClient.Geyser.CloseSend()
 
-	if err = stream.SubscribeSlots("slots", &pb.SubscribeRequestFilterSlots{}); err != nil {
+	if err = stream.SubscribeSlots("slots", &goyser_proto.SubscribeRequestFilterSlots{}); err != nil {
 		t.Fatal(err)
 	}
-	if err = stream.SubscribeAccounts("accounts", &pb.SubscribeRequestFilterAccounts{
+	if err = stream.SubscribeAccounts("accounts", &goyser_proto.SubscribeRequestFilterAccounts{
 		Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
 	}); err != nil {
 		t.Fatal(err)

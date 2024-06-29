@@ -4,7 +4,7 @@
 // - protoc             v4.25.3
 // source: yellowstone-log.proto
 
-package pb
+package goyser_proto
 
 import (
 	context "context"

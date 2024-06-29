@@ -4,7 +4,7 @@
 // 	protoc        v4.25.3
 // source: solana-storage.proto
 
-package pb
+package goyser_proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
