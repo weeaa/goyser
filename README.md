@@ -50,7 +50,7 @@ import (
   "context"
   "github.com/joho/godotenv"
   "github.com/weeaa/goyser"
-  "github.com/weeaa/goyser/pb"
+  "github.com/weeaa/goyser/geyser_pb"
   "log"
   "os"
 )
@@ -84,10 +84,10 @@ func main() {
   stream := client.Streams["main"]
   defer client.DefaultStreamClient.Geyser.CloseSend()
 
-  if err = stream.SubscribeSlots("slots", &pb.SubscribeRequestFilterSlots{}); err != nil {
+  if err = stream.SubscribeSlots("slots", &geyser_pb.SubscribeRequestFilterSlots{}); err != nil {
     log.Fatal(err)
   }
-  if err = stream.SubscribeAccounts("accounts", &pb.SubscribeRequestFilterAccounts{
+  if err = stream.SubscribeAccounts("accounts", &geyser_pb.SubscribeRequestFilterAccounts{
     Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
   }); err != nil {
     log.Fatal(err)
