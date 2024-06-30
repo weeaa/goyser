@@ -84,7 +84,7 @@ func (c *Client) NewSubscribeClient(ctx context.Context, clientName string) erro
 	}
 
 	c.Streams[clientName] = streamClient
-	streamClient.listen()
+	go streamClient.listen()
 
 	return nil
 }
@@ -180,11 +180,16 @@ func (s *StreamClient) SubscribeAccountDataSlice(req []*geyser_pb.SubscribeReque
 // listen starts listening for responses and errors.
 func (s *StreamClient) listen() {
 	for {
-		recv, err := s.Geyser.Recv()
-		if err != nil {
-			panic(err)
-		}
+		select {
+		case <-s.Ctx.Done():
+			return
+		default:
+			recv, err := s.Geyser.Recv()
+			if err != nil {
+				s.ErrCh <- err
+			}
 
-		s.Ch <- recv
+			s.Ch <- recv
+		}
 	}
 }
