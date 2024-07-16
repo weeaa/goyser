@@ -24,15 +24,21 @@ This library contains tooling to interact with **[Yellowstone Geyser Plugin](htt
   - `AppendAccounts`
   - `UnsubscribeAccounts`
   - `UnsubscribeAccountsByID`
+  - `UnsubscribeAllAccounts`
 - `SubscribeSlots`
   - `UnsubscribeSlots`
 - `SubscribeTransaction`
   - `UnsubscribeTransaction`
 - `SubscribeTransactionStatus`
+  - `UnsubscribeTransactionStatus`
 - `SubscribeBlocks`
+  - `UnsubscribeBlocks`
 - `SubscribeBlocksMeta`
+  - `UnsubscribeBlocksMeta`
 - `SubscribeEntry`
+  - `UnsubscribeEntry`
 - `SubscribeAccountDataSlice`
+  - `UnsubscribeAccountDataSlice`
 
 It also contains a feature to convert Goyser types to [github.com/gagliardetto/solana-go](https://github.com/gagliardetto/solana-go) types :)
 
