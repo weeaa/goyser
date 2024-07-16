@@ -12,10 +12,9 @@ This library contains tooling to interact with **[Yellowstone Geyser Plugin](htt
 
 ## ❇️ Contents
 - [Methods](#-methods)
-- [How it works](#-how-it-works)
 - [Installing](#-installing)
 - [Examples](#-examples)
-  - [Subscribe to Slots & Account](#subscribe-to-slots-and-account)
+  - [Subscribe to Account](#subscribe-to-account)
 - [Support](#-support)
 - [License](#-license)
 
@@ -42,78 +41,6 @@ This library contains tooling to interact with **[Yellowstone Geyser Plugin](htt
 
 It also contains a feature to convert Goyser types to [github.com/gagliardetto/solana-go](https://github.com/gagliardetto/solana-go) types :)
 
-## 🧠 How it works
-Simple example on how to monitor an account for transactions with explanations.
-```go
-package main
-
-import (
-	"context"
-	"github.com/weeaa/goyser"
-	"github.com/weeaa/goyser/pb"
-	"log"
-	"os"
-	"time"
-)
-
-func main() {
-	ctx := context.Background()
-
-	// get the geyser rpc address
-	geyserRPC := os.Getenv("GEYSER_RPC")
-
-	// create geyser client
-	client, err := goyser.New(ctx, geyserRPC)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// create a new subscribe client which is tied, for our example we will name it main
-	// the created client is stored in client.Streams
-	if err = client.NewSubscribeClient(ctx, "main"); err != nil {
-		log.Fatal(err)
-	}
-
-	// get the stream client
-	streamClient, ok := client.Streams["main"]
-	if !ok {
-		log.Fatal("client does not have a stream named main")
-	}
-
-	// subscribe to the account you want to see txns from and set a custom filter name to filter them out later
-	if err = streamClient.SubscribeAccounts("accounts", &geyser_pb.SubscribeRequestFilterAccounts{
-		Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
-	}); err != nil {
-		log.Fatal(err)
-	}
-
-	// loop through the stream and print the output
-	for out := range streamClient.Ch {
-		// u can filter the output by checking the filters
-		go func() {
-			filters := out.GetFilters()
-			for _, filter := range filters {
-				switch filter {
-				case "accounts":
-					log.Printf("account filter: %+v", out.GetAccount())
-				default:
-					log.Printf("unknown filter: %s", filter)
-				}
-			}
-		}()
-		break
-	}
-
-	// unsubscribe from the account
-	if err = streamClient.UnsubscribeAccounts("accounts", ""); err != nil {
-		log.Fatal(err)
-	}
-
-	time.Sleep(5 * time.Second)
-}
-```
-
-
 ## 💾 Installing
 
 Go 1.22.0 or higher.
@@ -123,67 +50,74 @@ go get github.com/weeaa/goyser@latest
 
 ## 💻 Examples
 
-### `Subscribe to Slots and Account`
+### `Subscribe to Account`
+Simple example on how to monitor an account for transactions with explanations.
 ```go
 package main
 
 import (
   "context"
-  "github.com/joho/godotenv"
   "github.com/weeaa/goyser"
-  "github.com/weeaa/goyser/geyser_pb"
+  "github.com/weeaa/goyser/pb"
   "log"
   "os"
+  "time"
 )
 
 func main() {
   ctx := context.Background()
 
-  if err := godotenv.Load(); err != nil {
-    log.Fatal(err)
-  }
+  // get the geyser rpc address
+  geyserRPC := os.Getenv("GEYSER_RPC")
 
-  rpcAddr, ok := os.LookupEnv("GEYSER_RPC")
-  if !ok {
-    log.Fatal("could not inf GEYSER_RPC in .env")
-  }
-
-  client, err := goyser.New(
-    ctx,
-    rpcAddr,
-  )
+  // create geyser client
+  client, err := goyser.New(ctx, geyserRPC)
   if err != nil {
     log.Fatal(err)
   }
-  defer client.GrpcConn.Close()
 
-  if err = client.NewSubscribeClient("main", ctx); err != nil {
+  // create a new subscribe client which is tied, for our example we will name it main
+  // the created client is stored in client.Streams
+  if err = client.NewSubscribeClient(ctx, "main"); err != nil {
     log.Fatal(err)
   }
-  defer client.DefaultStreamClient.Geyser.CloseSend()
 
-  stream := client.Streams["main"]
-  defer client.DefaultStreamClient.Geyser.CloseSend()
-
-  if err = stream.SubscribeSlots("slots", &geyser_pb.SubscribeRequestFilterSlots{}); err != nil {
-    log.Fatal(err)
+  // get the stream client
+  streamClient, ok := client.Streams["main"]
+  if !ok {
+    log.Fatal("client does not have a stream named main")
   }
-  if err = stream.SubscribeAccounts("accounts", &geyser_pb.SubscribeRequestFilterAccounts{
+
+  // subscribe to the account you want to see txns from and set a custom filter name to filter them out later
+  if err = streamClient.SubscribeAccounts("accounts", &geyser_pb.SubscribeRequestFilterAccounts{
     Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
   }); err != nil {
     log.Fatal(err)
   }
 
-  for out := range stream.Ch {
-    switch {
-    case out.GetSlot() != nil:
-      log.Printf("slot update: %+v", out.GetSlot())
-    case out.GetTransaction() != nil:
-      log.Printf("tx update: %+v", out.GetTransaction())
-    default:
-      log.Printf("other update: %+v", out)
-    }
+  // loop through the stream and print the output
+  for out := range streamClient.Ch {
+    // u can filter the output by checking the filters
+    go func() {
+      filters := out.GetFilters()
+      for _, filter := range filters {
+        switch filter {
+        case "accounts":
+          log.Printf("account filter: %+v", out.GetAccount())
+        default:
+          log.Printf("unknown filter: %s", filter)
+        }
+      }
+    }()
+    break
   }
+
+  // unsubscribe from the account
+  if err = streamClient.UnsubscribeAccounts("accounts", ""); err != nil {
+    log.Fatal(err)
+  }
+
+  time.Sleep(5 * time.Second)
 }
 ```
 
