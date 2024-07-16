@@ -10,9 +10,6 @@
 *.dylib
 .env
 
-# Test binary, built with `go test -c`
-*.test
-
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 

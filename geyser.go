@@ -2,10 +2,14 @@ package goyser
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/weeaa/goyser/pb"
 	"google.golang.org/grpc"
 	"slices"
+	"strconv"
 	"sync"
 )
 
@@ -112,17 +116,24 @@ func (s *StreamClient) AppendAccounts(filterName string, accounts ...string) err
 }
 
 // UnsubscribeAccountsByID unsubscribes from account updates by ID.
-func (s *StreamClient) UnsubscribeAccountsByID(filterName string) {
+func (s *StreamClient) UnsubscribeAccountsByID(filterName string) error {
 	delete(s.Request.Accounts, filterName)
+	return s.Geyser.Send(s.Request)
 }
 
 // UnsubscribeAccounts unsubscribes specific accounts.
-func (s *StreamClient) UnsubscribeAccounts(filterName string, accounts ...string) {
+func (s *StreamClient) UnsubscribeAccounts(filterName string, accounts ...string) error {
 	for _, account := range accounts {
 		s.Request.Accounts[filterName].Account = slices.DeleteFunc(s.Request.Accounts[filterName].Account, func(a string) bool {
 			return a == account
 		})
 	}
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) UnsubscribeAllAccounts(filterName string) error {
+	delete(s.Request.Accounts, filterName)
+	return s.Geyser.Send(s.Request)
 }
 
 // SubscribeSlots subscribes to slot updates.
@@ -132,8 +143,9 @@ func (s *StreamClient) SubscribeSlots(filterName string, req *geyser_pb.Subscrib
 }
 
 // UnsubscribeSlots unsubscribes from slot updates.
-func (s *StreamClient) UnsubscribeSlots(filterName string) {
+func (s *StreamClient) UnsubscribeSlots(filterName string) error {
 	delete(s.Request.Slots, filterName)
+	return s.Geyser.Send(s.Request)
 }
 
 // SubscribeTransaction subscribes to transaction updates.
@@ -143,13 +155,19 @@ func (s *StreamClient) SubscribeTransaction(filterName string, req *geyser_pb.Su
 }
 
 // UnsubscribeTransaction unsubscribes from transaction updates.
-func (s *StreamClient) UnsubscribeTransaction(filterName string) {
+func (s *StreamClient) UnsubscribeTransaction(filterName string) error {
 	delete(s.Request.Transactions, filterName)
+	return s.Geyser.Send(s.Request)
 }
 
 // SubscribeTransactionStatus subscribes to transaction status updates.
 func (s *StreamClient) SubscribeTransactionStatus(filterName string, req *geyser_pb.SubscribeRequestFilterTransactions) error {
 	s.Request.TransactionsStatus[filterName] = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) UnsubscribeTransactionStatus(filterName string) error {
+	delete(s.Request.TransactionsStatus, filterName)
 	return s.Geyser.Send(s.Request)
 }
 
@@ -159,9 +177,19 @@ func (s *StreamClient) SubscribeBlocks(filterName string, req *geyser_pb.Subscri
 	return s.Geyser.Send(s.Request)
 }
 
+func (s *StreamClient) UnsubscribeBlocks(filterName string) error {
+	delete(s.Request.Blocks, filterName)
+	return s.Geyser.Send(s.Request)
+}
+
 // SubscribeBlocksMeta subscribes to block metadata updates.
 func (s *StreamClient) SubscribeBlocksMeta(filterName string, req *geyser_pb.SubscribeRequestFilterBlocksMeta) error {
 	s.Request.BlocksMeta[filterName] = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) UnsubscribeBlocksMeta(filterName string) error {
+	delete(s.Request.BlocksMeta, filterName)
 	return s.Geyser.Send(s.Request)
 }
 
@@ -171,9 +199,19 @@ func (s *StreamClient) SubscribeEntry(filterName string, req *geyser_pb.Subscrib
 	return s.Geyser.Send(s.Request)
 }
 
+func (s *StreamClient) UnsubscribeEntry(filterName string) error {
+	delete(s.Request.Entry, filterName)
+	return s.Geyser.Send(s.Request)
+}
+
 // SubscribeAccountDataSlice subscribes to account data slice updates.
 func (s *StreamClient) SubscribeAccountDataSlice(req []*geyser_pb.SubscribeRequestAccountsDataSlice) error {
 	s.Request.AccountsDataSlice = req
+	return s.Geyser.Send(s.Request)
+}
+
+func (s *StreamClient) UnsubscribeAccountDataSlice() error {
+	s.Request.AccountsDataSlice = nil
 	return s.Geyser.Send(s.Request)
 }
 
@@ -188,8 +226,88 @@ func (s *StreamClient) listen() {
 			if err != nil {
 				s.ErrCh <- err
 			}
-
 			s.Ch <- recv
 		}
 	}
+}
+
+// ConvertTransaction converts a Geyser Transaction to github.com/gagliardetto/solana-go Solana Transaction.
+func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.Transaction {
+	tx := new(solana.Transaction)
+
+	tx.Signatures = []solana.Signature{{geyserTx.Transaction.Signature[64]}}
+
+	// header
+	tx.Message.Header.NumRequiredSignatures = uint8(geyserTx.Transaction.Transaction.Message.Header.NumRequiredSignatures)
+	tx.Message.Header.NumReadonlySignedAccounts = uint8(geyserTx.Transaction.Transaction.Message.Header.NumReadonlySignedAccounts)
+	tx.Message.Header.NumReadonlyUnsignedAccounts = uint8(geyserTx.Transaction.Transaction.Message.Header.NumReadonlyUnsignedAccounts)
+
+	// account keys
+	accountKeys := solana.PublicKeySlice{}
+	for _, accountKey := range geyserTx.Transaction.Transaction.Message.AccountKeys {
+		accountKeys = append(accountKeys, solana.PublicKey{accountKey[32]})
+	}
+
+	// instructions
+	for _, instruction := range geyserTx.Transaction.Transaction.Message.Instructions {
+		tx.Message.Instructions = append(tx.Message.Instructions, solana.CompiledInstruction{
+			ProgramIDIndex: uint16(instruction.ProgramIdIndex),
+			Accounts:       []uint16{binary.BigEndian.Uint16(instruction.Accounts)},
+			Data:           instruction.Data,
+		})
+	}
+
+	// address table lookup
+	for _, atl := range geyserTx.Transaction.Transaction.Message.AddressTableLookups {
+		tx.Message.AddressTableLookups = append(tx.Message.AddressTableLookups, solana.MessageAddressTableLookup{
+			AccountKey:      solana.PublicKeyFromBytes(atl.AccountKey),
+			WritableIndexes: atl.WritableIndexes,
+			ReadonlyIndexes: atl.ReadonlyIndexes,
+		})
+	}
+
+	tx.Message.RecentBlockhash = solana.Hash{geyserTx.Transaction.Transaction.Message.RecentBlockhash[32]}
+
+	return tx
+}
+
+// ConvertBlockHash converts a Geyser block to a github.com/gagliardetto/solana-go Solana block.
+func ConvertBlockHash(geyserBlock *geyser_pb.SubscribeUpdateBlock) *rpc.GetBlockResult {
+	block := new(rpc.GetBlockResult)
+
+	blockTime := solana.UnixTimeSeconds(geyserBlock.BlockTime.Timestamp)
+	block.BlockTime = &blockTime
+	block.BlockHeight = &geyserBlock.BlockHeight.BlockHeight
+	block.Blockhash = solana.Hash{[]byte(geyserBlock.Blockhash)[32]}
+	block.ParentSlot = geyserBlock.ParentSlot
+
+	for _, reward := range geyserBlock.Rewards.Rewards {
+		commission, err := strconv.ParseUint(reward.Commission, 10, 8)
+		if err != nil {
+			return nil
+		}
+
+		var rewardType rpc.RewardType
+		switch reward.RewardType {
+		case 1:
+			rewardType = rpc.RewardTypeFee
+		case 2:
+			rewardType = rpc.RewardTypeRent
+		case 3:
+			rewardType = rpc.RewardTypeStaking
+		case 4:
+			rewardType = rpc.RewardTypeVoting
+		}
+
+		comm := uint8(commission)
+		block.Rewards = append(block.Rewards, rpc.BlockReward{
+			Pubkey:      solana.MustPublicKeyFromBase58(reward.Pubkey),
+			Lamports:    reward.Lamports,
+			PostBalance: reward.PostBalance,
+			Commission:  &comm,
+			RewardType:  rewardType,
+		})
+	}
+
+	return block
 }
