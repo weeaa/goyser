@@ -93,6 +93,15 @@ func (c *Client) NewSubscribeClient(ctx context.Context, clientName string) erro
 	return nil
 }
 
+func (c *Client) BatchNewSubscribeClient(ctx context.Context, clientNames ...string) error {
+	for _, clientName := range clientNames {
+		if err := c.NewSubscribeClient(ctx, clientName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SetDefaultSubscribeClient sets the default subscribe client.
 func (c *Client) SetDefaultSubscribeClient(client geyser_pb.Geyser_SubscribeClient) *Client {
 	c.mu.Lock()
