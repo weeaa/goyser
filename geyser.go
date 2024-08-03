@@ -2,7 +2,7 @@ package goyser
 
 import (
 	"context"
-	"encoding/binary"
+	//"encoding/binary"
 	"fmt"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
@@ -244,7 +244,7 @@ func (s *StreamClient) listen() {
 func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.Transaction {
 	tx := new(solana.Transaction)
 
-	tx.Signatures = []solana.Signature{{geyserTx.Transaction.Signature[64]}}
+	tx.Signatures = []solana.Signature{solana.SignatureFromBytes(geyserTx.Transaction.Signature)}
 
 	// header
 	tx.Message.Header.NumRequiredSignatures = uint8(geyserTx.Transaction.Transaction.Message.Header.NumRequiredSignatures)
@@ -254,14 +254,20 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.
 	// account keys
 	accountKeys := solana.PublicKeySlice{}
 	for _, accountKey := range geyserTx.Transaction.Transaction.Message.AccountKeys {
-		accountKeys = append(accountKeys, solana.PublicKey{accountKey[32]})
+		accountKeys.Append(solana.PublicKeyFromBytes(accountKey))
 	}
 
-	// instructions
+	tx.Message.AccountKeys = accountKeys
+
+	//// instructions
 	for _, instruction := range geyserTx.Transaction.Transaction.Message.Instructions {
+		accounts := make([]uint16, len(instruction.Accounts))
+		for i, account := range instruction.Accounts {
+			accounts[i] = uint16(account)
+		}
 		tx.Message.Instructions = append(tx.Message.Instructions, solana.CompiledInstruction{
 			ProgramIDIndex: uint16(instruction.ProgramIdIndex),
-			Accounts:       []uint16{binary.BigEndian.Uint16(instruction.Accounts)},
+			Accounts:       accounts,
 			Data:           instruction.Data,
 		})
 	}
@@ -275,7 +281,7 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.
 		})
 	}
 
-	tx.Message.RecentBlockhash = solana.Hash{geyserTx.Transaction.Transaction.Message.RecentBlockhash[32]}
+	tx.Message.RecentBlockhash = solana.Hash(solana.PublicKeyFromBytes(geyserTx.Transaction.Transaction.Message.RecentBlockhash).Bytes())
 
 	return tx
 }
