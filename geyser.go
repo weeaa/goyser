@@ -2,7 +2,8 @@ package goyser
 
 import (
 	"context"
-	//"encoding/binary"
+	"google.golang.org/grpc/metadata"
+
 	"fmt"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
@@ -31,14 +32,19 @@ type StreamClient struct {
 	ErrCh   chan error                       // Channel for errors
 }
 
-func New(ctx context.Context, grpcDialURL string) (*Client, error) {
-	chErr := make(chan error)
-	conn, err := createAndObserveGRPCConn(ctx, chErr, grpcDialURL)
+func New(ctx context.Context, grpcDialURL string, md metadata.MD) (*Client, error) {
+	ch := make(chan error)
+	conn, err := createAndObserveGRPCConn(ctx, ch, grpcDialURL, md)
 	if err != nil {
 		return nil, err
 	}
 
 	geyserClient := geyser_pb.NewGeyserClient(conn)
+
+	if md != nil {
+		ctx = metadata.NewOutgoingContext(ctx, md)
+	}
+
 	subscribe, err := geyserClient.Subscribe(
 		ctx,
 		grpc.MaxCallRecvMsgSize(16*1024*1024),
@@ -59,14 +65,19 @@ func New(ctx context.Context, grpcDialURL string) (*Client, error) {
 			Ch:     make(chan *geyser_pb.SubscribeUpdate),
 			ErrCh:  make(chan error),
 		},
-		ErrCh: chErr,
+		ErrCh: ch,
 	}, nil
 }
 
-// NewSubscribeClient creates a new Geyser subscribe stream client.
-func (c *Client) NewSubscribeClient(ctx context.Context, clientName string) error {
+func (c *Client) Close() error {
+	close(c.DefaultStreamClient.ErrCh)
+	close(c.DefaultStreamClient.Ch)
+	return c.GrpcConn.Close()
+}
 
-	stream, err := c.Geyser.Subscribe(ctx)
+// NewSubscribeClient creates a new Geyser subscribe stream client.
+func (c *Client) NewSubscribeClient(ctx context.Context, clientName string, opts ...grpc.CallOption) error {
+	stream, err := c.Geyser.Subscribe(ctx, opts...)
 	if err != nil {
 		return err
 	}
@@ -94,9 +105,9 @@ func (c *Client) NewSubscribeClient(ctx context.Context, clientName string) erro
 	return nil
 }
 
-func (c *Client) BatchNewSubscribeClient(ctx context.Context, clientNames ...string) error {
-	for _, clientName := range clientNames {
-		if err := c.NewSubscribeClient(ctx, clientName); err != nil {
+func (c *Client) BatchNewSubscribeClient(ctx context.Context, clients []string, opts ...grpc.CallOption) error {
+	for _, client := range clients {
+		if err := c.NewSubscribeClient(ctx, client, opts...); err != nil {
 			return err
 		}
 	}
@@ -241,8 +252,7 @@ func (s *StreamClient) listen() {
 	}
 }
 
-// ConvertTransaction converts a Geyser Transaction to github.com/gagliardetto/solana-go Solana Transaction. // , []rpc.InnerInstruction
-func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) (*solana.Transaction) {
+func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.Transaction {
 	tx := new(solana.Transaction)
 
 	tx.Signatures = []solana.Signature{solana.SignatureFromBytes(geyserTx.Transaction.Signature)}
@@ -286,9 +296,8 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) (*solana
 
 	tx.Message.RecentBlockhash = solana.Hash(solana.PublicKeyFromBytes(geyserTx.Transaction.Transaction.Message.RecentBlockhash).Bytes())
 
-	return tx//,innerInstructions
+	return tx //,innerInstructions
 }
-
 
 // ConvertBlockHash converts a Geyser block to a github.com/gagliardetto/solana-go Solana block.
 func ConvertBlockHash(geyserBlock *geyser_pb.SubscribeUpdateBlock) *rpc.GetBlockResult {

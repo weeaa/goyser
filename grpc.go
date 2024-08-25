@@ -10,12 +10,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"net/url"
 	"time"
 )
 
 // createAndObserveGRPCConn creates a new gRPC connection and observes its conn status.
-func createAndObserveGRPCConn(ctx context.Context, chErr chan error, target string) (*grpc.ClientConn, error) {
+func createAndObserveGRPCConn(ctx context.Context, ch chan error, target string, md metadata.MD) (*grpc.ClientConn, error) {
 	var opts []grpc.DialOption
 	u, err := url.Parse(target)
 	if err != nil {
@@ -23,13 +24,15 @@ func createAndObserveGRPCConn(ctx context.Context, chErr chan error, target stri
 	}
 
 	port := u.Port()
+	if port == "" {
+		port = "443"
+	}
 
 	if u.Scheme == "http" {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	} else {
 		pool, _ := x509.SystemCertPool()
 		opts = append(opts, grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(pool, "")))
-		port = "443"
 	}
 
 	hostname := u.Hostname()
@@ -58,7 +61,7 @@ func createAndObserveGRPCConn(ctx context.Context, chErr chan error, target stri
 			select {
 			case <-ctx.Done():
 				if err = conn.Close(); err != nil {
-					chErr <- err
+					ch <- err
 				}
 				return
 			default:
@@ -78,14 +81,14 @@ func createAndObserveGRPCConn(ctx context.Context, chErr chan error, target stri
 						conn.Close()
 						conn, err = grpc.NewClient(target, opts...)
 						if err != nil {
-							chErr <- err
+							ch <- err
 						}
 						retries = 0
 					}
 				} else if state == connectivity.Shutdown {
 					conn, err = grpc.NewClient(target, opts...)
 					if err != nil {
-						chErr <- err
+						ch <- err
 					}
 					retries = 0
 				}

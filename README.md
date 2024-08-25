@@ -71,7 +71,7 @@ func main() {
   geyserRPC := os.Getenv("GEYSER_RPC")
 
   // create geyser client
-  client, err := goyser.New(ctx, geyserRPC)
+  client, err := goyser.New(ctx, geyserRPC, nil)
   if err != nil {
     log.Fatal(err)
   }

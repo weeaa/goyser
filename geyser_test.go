@@ -33,6 +33,7 @@ func Test_GeyserClient(t *testing.T) {
 	client, err := New(
 		ctx,
 		rpcAddr,
+		nil,
 	)
 	if !assert.NoError(t, err) {
 		t.FailNow()
