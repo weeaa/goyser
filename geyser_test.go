@@ -38,15 +38,14 @@ func Test_GeyserClient(t *testing.T) {
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}
-	defer client.GrpcConn.Close()
+	defer client.Close()
 
-	if err = client.NewSubscribeClient(ctx, "main"); err != nil {
+	streamName := "main"
+	if err = client.AddStreamClient(ctx, streamName); err != nil {
 		t.Fatal(err)
 	}
 
-	stream := client.Streams["main"]
-
-	defer client.DefaultStreamClient.Geyser.CloseSend()
+	stream := client.GetStreamClient(streamName)
 
 	if err = stream.SubscribeAccounts("accounts", &geyser_pb.SubscribeRequestFilterAccounts{
 		Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
@@ -56,5 +55,6 @@ func Test_GeyserClient(t *testing.T) {
 
 	for out := range stream.Ch {
 		log.Printf("%+v", out)
+		return
 	}
 }

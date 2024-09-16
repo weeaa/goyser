@@ -3,6 +3,7 @@ package goyser
 import (
 	"context"
 	"google.golang.org/grpc/metadata"
+	"io"
 
 	"fmt"
 	"github.com/gagliardetto/solana-go"
@@ -15,21 +16,25 @@ import (
 )
 
 type Client struct {
-	GrpcConn            *grpc.ClientConn         // gRPC connection
-	Ctx                 context.Context          // Context for cancellation and deadlines
-	Geyser              geyser_pb.GeyserClient   // Geyser client
-	Streams             map[string]*StreamClient // Active stream clients
-	DefaultStreamClient *StreamClient            // Default stream client
-	mu                  sync.Mutex               // Mutex for thread safety
-	ErrCh               chan error               // Channel for errors
+	grpcConn *grpc.ClientConn
+	Ctx      context.Context
+	Geyser   geyser_pb.GeyserClient
+	ErrCh    chan error
+	s        *streamManager
+}
+
+type streamManager struct {
+	clients map[string]*StreamClient
+	mu      sync.RWMutex
 }
 
 type StreamClient struct {
-	Ctx     context.Context                  // Context for cancellation and deadlines
-	Geyser  geyser_pb.Geyser_SubscribeClient // Geyser subscribe client
-	Request *geyser_pb.SubscribeRequest      // Subscribe request
-	Ch      chan *geyser_pb.SubscribeUpdate  // Channel for updates
-	ErrCh   chan error                       // Channel for errors
+	Ctx     context.Context
+	geyser  geyser_pb.Geyser_SubscribeClient
+	request *geyser_pb.SubscribeRequest
+	Ch      chan *geyser_pb.SubscribeUpdate
+	ErrCh   chan error
+	mu      sync.RWMutex
 }
 
 func New(ctx context.Context, grpcDialURL string, md metadata.MD) (*Client, error) {
@@ -45,38 +50,31 @@ func New(ctx context.Context, grpcDialURL string, md metadata.MD) (*Client, erro
 		ctx = metadata.NewOutgoingContext(ctx, md)
 	}
 
-	subscribe, err := geyserClient.Subscribe(
-		ctx,
-		grpc.MaxCallRecvMsgSize(16*1024*1024),
-		grpc.MaxCallSendMsgSize(16*1024*1024),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating default subscribe client: %w", err)
-	}
-
 	return &Client{
-		GrpcConn: conn,
+		grpcConn: conn,
 		Ctx:      ctx,
 		Geyser:   geyserClient,
-		Streams:  make(map[string]*StreamClient),
-		DefaultStreamClient: &StreamClient{
-			Geyser: subscribe,
-			Ctx:    ctx,
-			Ch:     make(chan *geyser_pb.SubscribeUpdate),
-			ErrCh:  make(chan error),
+		ErrCh:    ch,
+		s: &streamManager{
+			clients: make(map[string]*StreamClient),
+			mu:      sync.RWMutex{},
 		},
-		ErrCh: ch,
 	}, nil
 }
 
 func (c *Client) Close() error {
-	close(c.DefaultStreamClient.ErrCh)
-	close(c.DefaultStreamClient.Ch)
-	return c.GrpcConn.Close()
+	return c.grpcConn.Close()
 }
 
-// NewSubscribeClient creates a new Geyser subscribe stream client.
-func (c *Client) NewSubscribeClient(ctx context.Context, clientName string, opts ...grpc.CallOption) error {
+// AddStreamClient creates a new Geyser subscribe stream client.
+func (c *Client) AddStreamClient(ctx context.Context, streamName string, opts ...grpc.CallOption) error {
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+
+	if _, exists := c.s.clients[streamName]; exists {
+		return fmt.Errorf("client with name %s already exists", streamName)
+	}
+
 	stream, err := c.Geyser.Subscribe(ctx, opts...)
 	if err != nil {
 		return err
@@ -84,8 +82,8 @@ func (c *Client) NewSubscribeClient(ctx context.Context, clientName string, opts
 
 	streamClient := &StreamClient{
 		Ctx:    ctx,
-		Geyser: stream,
-		Request: &geyser_pb.SubscribeRequest{
+		geyser: stream,
+		request: &geyser_pb.SubscribeRequest{
 			Accounts:           make(map[string]*geyser_pb.SubscribeRequestFilterAccounts),
 			Slots:              make(map[string]*geyser_pb.SubscribeRequestFilterSlots),
 			Transactions:       make(map[string]*geyser_pb.SubscribeRequestFilterTransactions),
@@ -97,157 +95,185 @@ func (c *Client) NewSubscribeClient(ctx context.Context, clientName string, opts
 		},
 		Ch:    make(chan *geyser_pb.SubscribeUpdate),
 		ErrCh: make(chan error),
+		mu:    sync.RWMutex{},
 	}
 
-	c.Streams[clientName] = streamClient
+	c.s.clients[streamName] = streamClient
 	go streamClient.listen()
 
 	return nil
 }
 
-func (c *Client) BatchNewSubscribeClient(ctx context.Context, clients []string, opts ...grpc.CallOption) error {
-	for _, client := range clients {
-		if err := c.NewSubscribeClient(ctx, client, opts...); err != nil {
-			return err
-		}
-	}
-	return nil
+func (s *StreamClient) Stop() {
+	s.Ctx.Done()
+	close(s.Ch)
+	close(s.ErrCh)
 }
 
-// SetDefaultSubscribeClient sets the default subscribe client.
-func (c *Client) SetDefaultSubscribeClient(client geyser_pb.Geyser_SubscribeClient) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.DefaultStreamClient.Geyser = client
-	return c
+func (c *Client) GetStreamClient(streamName string) *StreamClient {
+	defer c.s.mu.RUnlock()
+	c.s.mu.RLock()
+	return c.s.clients[streamName]
+}
+
+func (s *StreamClient) sendRequest() error {
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeAccounts subscribes to account updates.
 // Note: This will overwrite existing subscriptions for the given ID.
 // To add new accounts without overwriting, use AppendAccounts.
 func (s *StreamClient) SubscribeAccounts(filterName string, req *geyser_pb.SubscribeRequestFilterAccounts) error {
-	s.Request.Accounts[filterName] = req
-	return s.Geyser.Send(s.Request)
+	s.mu.Lock()
+	s.request.Accounts[filterName] = req
+	s.mu.Unlock()
+	return s.geyser.Send(s.request)
+}
+
+func (s *StreamClient) GetAccounts(filterName string) []string {
+	defer s.mu.RUnlock()
+	s.mu.RLock()
+	return s.request.Accounts[filterName].Account
 }
 
 // AppendAccounts appends accounts to an existing subscription and sends the request.
 func (s *StreamClient) AppendAccounts(filterName string, accounts ...string) error {
-	s.Request.Accounts[filterName].Account = append(s.Request.Accounts[filterName].Account, accounts...)
-	return s.Geyser.Send(s.Request)
+	s.request.Accounts[filterName].Account = append(s.request.Accounts[filterName].Account, accounts...)
+	return s.geyser.Send(s.request)
 }
 
 // UnsubscribeAccountsByID unsubscribes from account updates by ID.
 func (s *StreamClient) UnsubscribeAccountsByID(filterName string) error {
-	delete(s.Request.Accounts, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.Accounts, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // UnsubscribeAccounts unsubscribes specific accounts.
 func (s *StreamClient) UnsubscribeAccounts(filterName string, accounts ...string) error {
-	for _, account := range accounts {
-		s.Request.Accounts[filterName].Account = slices.DeleteFunc(s.Request.Accounts[filterName].Account, func(a string) bool {
-			return a == account
+	defer s.mu.Unlock()
+	s.mu.Lock()
+	if filter, exists := s.request.Accounts[filterName]; exists {
+		filter.Account = slices.DeleteFunc(filter.Account, func(a string) bool {
+			return slices.Contains(accounts, a)
 		})
 	}
-	return s.Geyser.Send(s.Request)
+	return s.sendRequest()
 }
 
 func (s *StreamClient) UnsubscribeAllAccounts(filterName string) error {
-	delete(s.Request.Accounts, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.Accounts, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeSlots subscribes to slot updates.
 func (s *StreamClient) SubscribeSlots(filterName string, req *geyser_pb.SubscribeRequestFilterSlots) error {
-	s.Request.Slots[filterName] = req
-	return s.Geyser.Send(s.Request)
+	s.request.Slots[filterName] = req
+	return s.geyser.Send(s.request)
 }
 
 // UnsubscribeSlots unsubscribes from slot updates.
 func (s *StreamClient) UnsubscribeSlots(filterName string) error {
-	delete(s.Request.Slots, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.Slots, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeTransaction subscribes to transaction updates.
 func (s *StreamClient) SubscribeTransaction(filterName string, req *geyser_pb.SubscribeRequestFilterTransactions) error {
-	s.Request.Transactions[filterName] = req
-	return s.Geyser.Send(s.Request)
+	s.request.Transactions[filterName] = req
+	return s.geyser.Send(s.request)
 }
 
 // UnsubscribeTransaction unsubscribes from transaction updates.
 func (s *StreamClient) UnsubscribeTransaction(filterName string) error {
-	delete(s.Request.Transactions, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.Transactions, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeTransactionStatus subscribes to transaction status updates.
 func (s *StreamClient) SubscribeTransactionStatus(filterName string, req *geyser_pb.SubscribeRequestFilterTransactions) error {
-	s.Request.TransactionsStatus[filterName] = req
-	return s.Geyser.Send(s.Request)
+	s.request.TransactionsStatus[filterName] = req
+	return s.geyser.Send(s.request)
 }
 
 func (s *StreamClient) UnsubscribeTransactionStatus(filterName string) error {
-	delete(s.Request.TransactionsStatus, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.TransactionsStatus, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeBlocks subscribes to block updates.
 func (s *StreamClient) SubscribeBlocks(filterName string, req *geyser_pb.SubscribeRequestFilterBlocks) error {
-	s.Request.Blocks[filterName] = req
-	return s.Geyser.Send(s.Request)
+	s.request.Blocks[filterName] = req
+	return s.geyser.Send(s.request)
 }
 
 func (s *StreamClient) UnsubscribeBlocks(filterName string) error {
-	delete(s.Request.Blocks, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.Blocks, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeBlocksMeta subscribes to block metadata updates.
 func (s *StreamClient) SubscribeBlocksMeta(filterName string, req *geyser_pb.SubscribeRequestFilterBlocksMeta) error {
-	s.Request.BlocksMeta[filterName] = req
-	return s.Geyser.Send(s.Request)
+	s.request.BlocksMeta[filterName] = req
+	return s.geyser.Send(s.request)
 }
 
 func (s *StreamClient) UnsubscribeBlocksMeta(filterName string) error {
-	delete(s.Request.BlocksMeta, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.BlocksMeta, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeEntry subscribes to entry updates.
 func (s *StreamClient) SubscribeEntry(filterName string, req *geyser_pb.SubscribeRequestFilterEntry) error {
-	s.Request.Entry[filterName] = req
-	return s.Geyser.Send(s.Request)
+	s.request.Entry[filterName] = req
+	return s.geyser.Send(s.request)
 }
 
 func (s *StreamClient) UnsubscribeEntry(filterName string) error {
-	delete(s.Request.Entry, filterName)
-	return s.Geyser.Send(s.Request)
+	delete(s.request.Entry, filterName)
+	return s.geyser.Send(s.request)
 }
 
 // SubscribeAccountDataSlice subscribes to account data slice updates.
 func (s *StreamClient) SubscribeAccountDataSlice(req []*geyser_pb.SubscribeRequestAccountsDataSlice) error {
-	s.Request.AccountsDataSlice = req
-	return s.Geyser.Send(s.Request)
+	s.request.AccountsDataSlice = req
+	return s.geyser.Send(s.request)
 }
 
 func (s *StreamClient) UnsubscribeAccountDataSlice() error {
-	s.Request.AccountsDataSlice = nil
-	return s.Geyser.Send(s.Request)
+	s.request.AccountsDataSlice = nil
+	return s.geyser.Send(s.request)
 }
 
 // listen starts listening for responses and errors.
 func (s *StreamClient) listen() {
+	defer close(s.Ch)
+	defer close(s.ErrCh)
+
 	for {
 		select {
 		case <-s.Ctx.Done():
+			if err := s.Ctx.Err(); err != nil {
+				s.ErrCh <- fmt.Errorf("stream context cancelled: %w", err)
+			}
 			return
 		default:
-			recv, err := s.Geyser.Recv()
+			recv, err := s.geyser.Recv()
 			if err != nil {
-				s.ErrCh <- err
+				if err == io.EOF {
+					return
+				}
+				select {
+				case s.ErrCh <- fmt.Errorf("error receiving from stream: %w", err):
+				case <-s.Ctx.Done():
+					return
+				}
+				return
 			}
-			s.Ch <- recv
+			select {
+			case s.Ch <- recv:
+			case <-s.Ctx.Done():
+				return
+			}
 		}
 	}
 }
@@ -272,7 +298,7 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.
 
 	tx.Message.AccountKeys = accountKeys
 
-	//// instructions
+	// instructions
 	for _, instruction := range geyserTx.Transaction.Transaction.Message.Instructions {
 		accounts := make([]uint16, len(instruction.Accounts))
 		for i, account := range instruction.Accounts {
@@ -296,10 +322,18 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.
 
 	tx.Message.RecentBlockhash = solana.Hash(solana.PublicKeyFromBytes(geyserTx.Transaction.Transaction.Message.RecentBlockhash).Bytes())
 
-	return tx //,innerInstructions
+	return tx
 }
 
-// ConvertBlockHash converts a Geyser block to a github.com/gagliardetto/solana-go Solana block.
+func BatchConvertTransaction(geyserTxns ...*geyser_pb.SubscribeUpdateTransaction) []*solana.Transaction {
+	txns := make([]*solana.Transaction, len(geyserTxns), 0)
+	for _, tx := range geyserTxns {
+		txns = append(txns, ConvertTransaction(tx))
+	}
+	return txns
+}
+
+// ConvertBlockHash converts a Geyser type block to a github.com/gagliardetto/solana-go Solana block.
 func ConvertBlockHash(geyserBlock *geyser_pb.SubscribeUpdateBlock) *rpc.GetBlockResult {
 	block := new(rpc.GetBlockResult)
 
@@ -338,4 +372,12 @@ func ConvertBlockHash(geyserBlock *geyser_pb.SubscribeUpdateBlock) *rpc.GetBlock
 	}
 
 	return block
+}
+
+func BatchConvertBlockHash(geyserBlocks ...*geyser_pb.SubscribeUpdateBlock) []*rpc.GetBlockResult {
+	blocks := make([]*rpc.GetBlockResult, len(geyserBlocks), 0)
+	for _, block := range geyserBlocks {
+		blocks = append(blocks, ConvertBlockHash(block))
+	}
+	return blocks
 }

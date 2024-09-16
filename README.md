@@ -11,12 +11,16 @@ This library contains tooling to interact with **[Yellowstone Geyser Plugin](htt
 </div>
 
 ## ❇️ Contents
+- [Support](#-support)
 - [Methods](#-methods)
 - [Installing](#-installing)
 - [Examples](#-examples)
   - [Subscribe to Account](#subscribe-to-account)
-- [Support](#-support)
 - [License](#-license)
+
+## 🛟 Support
+If my work has been useful in building your for-profit services/infra/bots/etc, consider donating at
+`EcrHvqa5Vh4NhR3bitRZVrdcUGr1Z3o6bXHz7xgBU2FB` (SOL).
 
 ## 📡 Methods
 - `SubscribeAccounts`
@@ -64,6 +68,8 @@ import (
   "time"
 )
 
+const subAccount = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
 func main() {
   ctx := context.Background()
 
@@ -78,19 +84,19 @@ func main() {
 
   // create a new subscribe client which is tied, for our example we will name it main
   // the created client is stored in client.Streams
-  if err = client.NewSubscribeClient(ctx, "main"); err != nil {
+  if err = client.AddStreamClient(ctx, "main"); err != nil {
     log.Fatal(err)
   }
 
   // get the stream client
-  streamClient, ok := client.Streams["main"]
-  if !ok {
+  streamClient := client.GetStreamClient("main")
+  if streamClient == nil {
     log.Fatal("client does not have a stream named main")
   }
 
   // subscribe to the account you want to see txns from and set a custom filter name to filter them out later
   if err = streamClient.SubscribeAccounts("accounts", &geyser_pb.SubscribeRequestFilterAccounts{
-    Account: []string{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
+    Account: []string{subAccount},
   }); err != nil {
     log.Fatal(err)
   }
@@ -112,18 +118,14 @@ func main() {
     break
   }
 
+  time.Sleep(5 * time.Second)
+
   // unsubscribe from the account
-  if err = streamClient.UnsubscribeAccounts("accounts", ""); err != nil {
+  if err = streamClient.UnsubscribeAccounts("accounts", subAccount); err != nil {
     log.Fatal(err)
   }
-
-  time.Sleep(5 * time.Second)
 }
 ```
-
-## 🛟 Support
-If my work has been useful in building your for-profit services/infra/bots/etc, consider donating at
-`EcrHvqa5Vh4NhR3bitRZVrdcUGr1Z3o6bXHz7xgBU2FB` (SOL).
 
 ## 📃 License
 
