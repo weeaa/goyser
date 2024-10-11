@@ -66,6 +66,10 @@ func (c *Client) Close() error {
 	return c.grpcConn.Close()
 }
 
+func (c *Client) Ping(count int32) (*geyser_pb.PongResponse, error) {
+	return c.Geyser.Ping(c.Ctx, &geyser_pb.PingRequest{Count: count})
+}
+
 // AddStreamClient creates a new Geyser subscribe stream client.
 func (c *Client) AddStreamClient(ctx context.Context, streamName string, opts ...grpc.CallOption) error {
 	c.s.mu.Lock()
