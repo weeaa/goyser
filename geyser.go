@@ -114,10 +114,16 @@ func (s *StreamClient) Stop() {
 	close(s.ErrCh)
 }
 
+// GetStreamClient Returns a StreamClient for the given streamName from the client's map.
 func (c *Client) GetStreamClient(streamName string) *StreamClient {
 	defer c.s.mu.RUnlock()
 	c.s.mu.RLock()
 	return c.s.clients[streamName]
+}
+
+// SendCustomRequest sends a custom *geyser_pb.SubscribeRequest using the Geyser client.
+func (s *StreamClient) SendCustomRequest(request *geyser_pb.SubscribeRequest) error {
+	return s.geyser.Send(request)
 }
 
 func (s *StreamClient) sendRequest() error {
