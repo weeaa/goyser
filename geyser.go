@@ -121,6 +121,20 @@ func (c *Client) GetStreamClient(streamName string) *StreamClient {
 	return c.s.clients[streamName]
 }
 
+// NewRequest creates a new empty *geyser_pb.SubscribeRequest.
+func (s *StreamClient) NewRequest() *geyser_pb.SubscribeRequest {
+	return &geyser_pb.SubscribeRequest{
+		Accounts:           make(map[string]*geyser_pb.SubscribeRequestFilterAccounts),
+		Slots:              make(map[string]*geyser_pb.SubscribeRequestFilterSlots),
+		Transactions:       make(map[string]*geyser_pb.SubscribeRequestFilterTransactions),
+		TransactionsStatus: make(map[string]*geyser_pb.SubscribeRequestFilterTransactions),
+		Blocks:             make(map[string]*geyser_pb.SubscribeRequestFilterBlocks),
+		BlocksMeta:         make(map[string]*geyser_pb.SubscribeRequestFilterBlocksMeta),
+		Entry:              make(map[string]*geyser_pb.SubscribeRequestFilterEntry),
+		AccountsDataSlice:  make([]*geyser_pb.SubscribeRequestAccountsDataSlice, 0),
+	}
+}
+
 // SendCustomRequest sends a custom *geyser_pb.SubscribeRequest using the Geyser client.
 func (s *StreamClient) SendCustomRequest(request *geyser_pb.SubscribeRequest) error {
 	return s.geyser.Send(request)
