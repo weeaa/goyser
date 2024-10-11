@@ -121,6 +121,13 @@ func (c *Client) GetStreamClient(streamName string) *StreamClient {
 	return c.s.clients[streamName]
 }
 
+// SetRequest sets a custom request to be used across all methods.
+func (s *StreamClient) SetRequest(req *geyser_pb.SubscribeRequest) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.request = req
+}
+
 // NewRequest creates a new empty *geyser_pb.SubscribeRequest.
 func (s *StreamClient) NewRequest() *geyser_pb.SubscribeRequest {
 	return &geyser_pb.SubscribeRequest{
