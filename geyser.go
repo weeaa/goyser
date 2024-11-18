@@ -180,12 +180,6 @@ func (s *StreamClient) AppendAccounts(filterName string, accounts ...string) err
 	return s.geyser.Send(s.request)
 }
 
-// UnsubscribeAccountsByFilterName unsubscribes from account updates by filter name.
-func (s *StreamClient) UnsubscribeAccountsByFilterName(filterName string) error {
-	delete(s.request.Accounts, filterName)
-	return s.geyser.Send(s.request)
-}
-
 // UnsubscribeAccounts unsubscribes specific accounts.
 func (s *StreamClient) UnsubscribeAccounts(filterName string, accounts ...string) error {
 	defer s.mu.Unlock()
@@ -405,6 +399,10 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) (*rpc.Ge
 		return nil, err
 	}
 
+	if transaction.Message.Versioned {
+		solTx.Message.SetVersion(1)
+	}
+
 	solTx.Message.RecentBlockhash = solana.HashFromBytes(transaction.Message.RecentBlockhash)
 	solTx.Message.Header = solana.MessageHeader{
 		NumRequiredSignatures:       uint8(transaction.Message.Header.NumRequiredSignatures),
@@ -439,56 +437,6 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) (*rpc.Ge
 
 	return &tx, nil
 }
-
-/*
-// Deprecated: Use ConvertParsedTransaction instead.
-func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) *solana.Transaction {
-	tx := new(solana.Transaction)
-
-	tx.Signatures = []solana.Signature{solana.SignatureFromBytes(geyserTx.Transaction.Signature)}
-	if geyserTx.Transaction.Transaction.Message.Versioned {
-		tx.Message.SetVersion(1)
-	}
-	// header
-	tx.Message.Header.NumRequiredSignatures = uint8(geyserTx.Transaction.Transaction.Message.Header.NumRequiredSignatures)
-	tx.Message.Header.NumReadonlySignedAccounts = uint8(geyserTx.Transaction.Transaction.Message.Header.NumReadonlySignedAccounts)
-	tx.Message.Header.NumReadonlyUnsignedAccounts = uint8(geyserTx.Transaction.Transaction.Message.Header.NumReadonlyUnsignedAccounts)
-
-	// account keys
-	accountKeys := solana.PublicKeySlice{}
-	for _, accountKey := range geyserTx.Transaction.Transaction.Message.AccountKeys {
-		accountKeys.Append(solana.PublicKeyFromBytes(accountKey))
-	}
-
-	tx.Message.AccountKeys = accountKeys
-
-	// instructions
-	for _, instruction := range geyserTx.Transaction.Transaction.Message.Instructions {
-		accounts := make([]uint16, len(instruction.Accounts))
-		for i, account := range instruction.Accounts {
-			accounts[i] = uint16(account)
-		}
-		tx.Message.Instructions = append(tx.Message.Instructions, solana.CompiledInstruction{
-			ProgramIDIndex: uint16(instruction.ProgramIdIndex),
-			Accounts:       accounts,
-			Data:           instruction.Data,
-		})
-	}
-
-	// address table lookup
-	for _, atl := range geyserTx.Transaction.Transaction.Message.AddressTableLookups {
-		tx.Message.AddressTableLookups = append(tx.Message.AddressTableLookups, solana.MessageAddressTableLookup{
-			AccountKey:      solana.PublicKeyFromBytes(atl.AccountKey),
-			WritableIndexes: atl.WritableIndexes,
-			ReadonlyIndexes: atl.ReadonlyIndexes,
-		})
-	}
-
-	tx.Message.RecentBlockhash = solana.Hash(solana.PublicKeyFromBytes(geyserTx.Transaction.Transaction.Message.RecentBlockhash).Bytes())
-
-	return tx
-}
-*/
 
 func BatchConvertTransaction(geyserTxns ...*geyser_pb.SubscribeUpdateTransaction) []*rpc.GetTransactionResult {
 	txns := make([]*rpc.GetTransactionResult, len(geyserTxns), 0)
