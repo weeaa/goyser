@@ -26,7 +26,7 @@ If my work has been useful in building your for-profit services/infra/bots/etc, 
 - `SubscribeAccounts`
   - `AppendAccounts`
   - `UnsubscribeAccounts`
-  - `UnsubscribeAccountsByID`
+  - `UnsubscribeAccountsByFilterName`
   - `UnsubscribeAllAccounts`
 - `SubscribeSlots`
   - `UnsubscribeSlots`
