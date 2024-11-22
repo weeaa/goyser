@@ -76,8 +76,8 @@ func (c *Client) Ping(count int32) (*geyser_pb.PongResponse, error) {
 	return c.Geyser.Ping(c.Ctx, &geyser_pb.PingRequest{Count: count})
 }
 
-// AddStreamClient creates a new Geyser subscribe stream client. You can then retrieve it with GetStreamClient
-func (c *Client) AddStreamClient(ctx context.Context, streamName string, opts ...grpc.CallOption) error {
+// AddStreamClient creates a new Geyser subscribe stream client. You can retrieve it with GetStreamClient.
+func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitmentLevel *geyser_pb.CommitmentLevel, opts ...grpc.CallOption) error {
 	c.s.mu.Lock()
 	defer c.s.mu.Unlock()
 
@@ -102,6 +102,7 @@ func (c *Client) AddStreamClient(ctx context.Context, streamName string, opts ..
 			BlocksMeta:         make(map[string]*geyser_pb.SubscribeRequestFilterBlocksMeta),
 			Entry:              make(map[string]*geyser_pb.SubscribeRequestFilterEntry),
 			AccountsDataSlice:  make([]*geyser_pb.SubscribeRequestAccountsDataSlice, 0),
+			Commitment:         commitmentLevel,
 		},
 		Ch:    make(chan *geyser_pb.SubscribeUpdate),
 		ErrCh: make(chan error),
@@ -132,6 +133,13 @@ func (s *StreamClient) SetRequest(req *geyser_pb.SubscribeRequest) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.request = req
+}
+
+// SetCommitmentLevel modifies the commitment level of the stream's request.
+func (s *StreamClient) SetCommitmentLevel(commitmentLevel *geyser_pb.CommitmentLevel) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.request.Commitment = commitmentLevel
 }
 
 // NewRequest creates a new empty *geyser_pb.SubscribeRequest.

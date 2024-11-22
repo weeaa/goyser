@@ -21,18 +21,9 @@ func TestMain(m *testing.M) {
 func Test_GeyserClient(t *testing.T) {
 	ctx := context.Background()
 
-	rpcAddr, ok := os.LookupEnv("GEYSER_RPC")
-	if !assert.True(t, ok, "getting GEYSER_RPC from .env") {
-		t.FailNow()
-	}
-
-	if !assert.NotEqualf(t, "", rpcAddr, "GEYSER_RPC shouldn't be equal to [%s]", rpcAddr) {
-		t.FailNow()
-	}
-
 	client, err := New(
 		ctx,
-		rpcAddr,
+		"http://185.164.138.184:8901/",
 		nil,
 	)
 	if !assert.NoError(t, err) {
@@ -41,7 +32,8 @@ func Test_GeyserClient(t *testing.T) {
 	defer client.Close()
 
 	streamName := "main"
-	if err = client.AddStreamClient(ctx, streamName); err != nil {
+	commitmentLevel := geyser_pb.CommitmentLevel_PROCESSED
+	if err = client.AddStreamClient(ctx, streamName, &commitmentLevel); err != nil {
 		t.Fatal(err)
 	}
 
