@@ -7,7 +7,7 @@ toolchain go1.23.2
 require (
 	github.com/gagliardetto/solana-go v1.12.0
 	github.com/joho/godotenv v1.5.1
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.68.0
 	google.golang.org/protobuf v1.35.2
 )

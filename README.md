@@ -1,10 +1,10 @@
-# Geyser Yellowstone SDK
+# Solana Geyser SDK
 [![GoDoc](https://pkg.go.dev/badge/github.com/weeaa/goyser?status.svg)](https://pkg.go.dev/github.com/weeaa/goyser?tab=doc)
 [![Go Report Card](https://goreportcard.com/badge/github.com/weeaa/goyser)](https://goreportcard.com/report/github.com/weeaa/goyser)
 [![License](https://img.shields.io/badge/license-Apache_2.0-crimson)](https://opensource.org/license/apache-2-0)
 
 
-This library contains tooling to interact with **[Yellowstone Geyser Plugin](https://docs.solanalabs.com/validator/geyser)**. Work in progress. 👷
+This library contains tooling to interact with **[Yellowstone](https://github.com/rpcpool/yellowstone-grpc)** & **[Jito](https://github.com/jito-foundation/geyser-grpc-plugin)** Geyser plugins.
 
 <div align="center">
   <img src="https://github.com/weeaa/goyser/assets/108926252/601185b7-3f50-4542-ae94-16488a651467" alt="yellowstone" width="500" style="border-radius: 15px;"/>
@@ -23,27 +23,29 @@ If my work has been useful in building your for-profit services/infra/bots/etc, 
 `EcrHvqa5Vh4NhR3bitRZVrdcUGr1Z3o6bXHz7xgBU2FB` (SOL).
 
 ## 📡 Methods
-- `SubscribeAccounts`
-  - `AppendAccounts`
-  - `UnsubscribeAccounts`
-  - `UnsubscribeAccountsByFilterName`
-  - `UnsubscribeAllAccounts`
-- `SubscribeSlots`
-  - `UnsubscribeSlots`
-- `SubscribeTransaction`
-  - `UnsubscribeTransaction`
-- `SubscribeTransactionStatus`
-  - `UnsubscribeTransactionStatus`
-- `SubscribeBlocks`
-  - `UnsubscribeBlocks`
-- `SubscribeBlocksMeta`
-  - `UnsubscribeBlocksMeta`
-- `SubscribeEntry`
-  - `UnsubscribeEntry`
-- `SubscribeAccountDataSlice`
-  - `UnsubscribeAccountDataSlice`
+- **Yellowstone** ✅
+  - `SubscribeAccounts`
+    - `AppendAccounts`
+    - `UnsubscribeAccounts`
+    - `UnsubscribeAccountsByFilterName`
+    - `UnsubscribeAllAccounts`
+  - `SubscribeSlots`
+    - `UnsubscribeSlots`
+  - `SubscribeTransaction`
+    - `UnsubscribeTransaction`
+  - `SubscribeTransactionStatus`
+    - `UnsubscribeTransactionStatus`
+  - `SubscribeBlocks`
+    - `UnsubscribeBlocks`
+  - `SubscribeBlocksMeta`
+    - `UnsubscribeBlocksMeta`
+  - `SubscribeEntry`
+    - `UnsubscribeEntry`
+  - `SubscribeAccountDataSlice`
+    - `UnsubscribeAccountDataSlice`
+- **Jito** (TBD)
 
-It also contains a feature to convert Goyser types to [github.com/gagliardetto/solana-go](https://github.com/gagliardetto/solana-go) types :)
+💡 It also contains a `ConvertTransaction` function which converts from Goyser to [github.com/gagliardetto/solana-go](https://github.com/gagliardetto/solana-go) types :)
 
 ## 💾 Installing
 
