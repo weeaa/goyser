@@ -4,7 +4,7 @@
 // 	protoc        v4.25.3
 // source: solana-storage.proto
 
-package geyser_pb
+package yellowstone_geyser_pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

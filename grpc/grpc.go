@@ -1,4 +1,4 @@
-package goyser
+package grpc_wee
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-// createAndObserveGRPCConn creates a new gRPC connection and observes its conn status.
-func createAndObserveGRPCConn(ctx context.Context, ch chan error, target string, md metadata.MD) (*grpc.ClientConn, error) {
+// CreateAndObserveGRPCConn creates a new gRPC connection and observes its conn status.
+func CreateAndObserveGRPCConn(ctx context.Context, ch chan error, target string, md metadata.MD) (*grpc.ClientConn, error) {
 	var opts []grpc.DialOption
 	u, err := url.Parse(target)
 	if err != nil {

@@ -1,4 +1,4 @@
-package goyser
+package yellowstone_geyser
 
 import (
 	"context"
@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
-	"github.com/weeaa/goyser/pb"
+	grpc_wee "github.com/weeaa/goyser/grpc"
+	"github.com/weeaa/goyser/yellowstone_geyser/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"io"
@@ -19,7 +20,7 @@ import (
 type Client struct {
 	grpcConn *grpc.ClientConn
 	Ctx      context.Context
-	Geyser   geyser_pb.GeyserClient
+	Geyser   yellowstone_geyser_pb.GeyserClient
 	ErrCh    chan error
 	s        *streamManager
 }
@@ -31,9 +32,9 @@ type streamManager struct {
 
 type StreamClient struct {
 	Ctx     context.Context
-	geyser  geyser_pb.Geyser_SubscribeClient
-	request *geyser_pb.SubscribeRequest
-	Ch      chan *geyser_pb.SubscribeUpdate
+	geyser  yellowstone_geyser_pb.Geyser_SubscribeClient
+	request *yellowstone_geyser_pb.SubscribeRequest
+	Ch      chan *yellowstone_geyser_pb.SubscribeUpdate
 	ErrCh   chan error
 	mu      sync.RWMutex
 }
@@ -41,12 +42,12 @@ type StreamClient struct {
 // New creates a new Client instance.
 func New(ctx context.Context, grpcDialURL string, md metadata.MD) (*Client, error) {
 	ch := make(chan error)
-	conn, err := createAndObserveGRPCConn(ctx, ch, grpcDialURL, md)
+	conn, err := grpc_wee.CreateAndObserveGRPCConn(ctx, ch, grpcDialURL, md)
 	if err != nil {
 		return nil, err
 	}
 
-	geyserClient := geyser_pb.NewGeyserClient(conn)
+	geyserClient := yellowstone_geyser_pb.NewGeyserClient(conn)
 
 	if md != nil {
 		ctx = metadata.NewOutgoingContext(ctx, md)
@@ -72,12 +73,12 @@ func (c *Client) Close() error {
 	return c.grpcConn.Close()
 }
 
-func (c *Client) Ping(count int32) (*geyser_pb.PongResponse, error) {
-	return c.Geyser.Ping(c.Ctx, &geyser_pb.PingRequest{Count: count})
+func (c *Client) Ping(count int32) (*yellowstone_geyser_pb.PongResponse, error) {
+	return c.Geyser.Ping(c.Ctx, &yellowstone_geyser_pb.PingRequest{Count: count})
 }
 
 // AddStreamClient creates a new Geyser subscribe stream client. You can retrieve it with GetStreamClient.
-func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitmentLevel *geyser_pb.CommitmentLevel, opts ...grpc.CallOption) error {
+func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitmentLevel yellowstone_geyser_pb.CommitmentLevel, opts ...grpc.CallOption) error {
 	c.s.mu.Lock()
 	defer c.s.mu.Unlock()
 
@@ -93,18 +94,18 @@ func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitm
 	streamClient := &StreamClient{
 		Ctx:    ctx,
 		geyser: stream,
-		request: &geyser_pb.SubscribeRequest{
-			Accounts:           make(map[string]*geyser_pb.SubscribeRequestFilterAccounts),
-			Slots:              make(map[string]*geyser_pb.SubscribeRequestFilterSlots),
-			Transactions:       make(map[string]*geyser_pb.SubscribeRequestFilterTransactions),
-			TransactionsStatus: make(map[string]*geyser_pb.SubscribeRequestFilterTransactions),
-			Blocks:             make(map[string]*geyser_pb.SubscribeRequestFilterBlocks),
-			BlocksMeta:         make(map[string]*geyser_pb.SubscribeRequestFilterBlocksMeta),
-			Entry:              make(map[string]*geyser_pb.SubscribeRequestFilterEntry),
-			AccountsDataSlice:  make([]*geyser_pb.SubscribeRequestAccountsDataSlice, 0),
-			Commitment:         commitmentLevel,
+		request: &yellowstone_geyser_pb.SubscribeRequest{
+			Accounts:           make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterAccounts),
+			Slots:              make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterSlots),
+			Transactions:       make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterTransactions),
+			TransactionsStatus: make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterTransactions),
+			Blocks:             make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterBlocks),
+			BlocksMeta:         make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterBlocksMeta),
+			Entry:              make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterEntry),
+			AccountsDataSlice:  make([]*yellowstone_geyser_pb.SubscribeRequestAccountsDataSlice, 0),
+			Commitment:         &commitmentLevel,
 		},
-		Ch:    make(chan *geyser_pb.SubscribeUpdate),
+		Ch:    make(chan *yellowstone_geyser_pb.SubscribeUpdate),
 		ErrCh: make(chan error),
 		mu:    sync.RWMutex{},
 	}
@@ -129,35 +130,35 @@ func (c *Client) GetStreamClient(streamName string) *StreamClient {
 }
 
 // SetRequest sets a custom request to be used across all methods.
-func (s *StreamClient) SetRequest(req *geyser_pb.SubscribeRequest) {
+func (s *StreamClient) SetRequest(req *yellowstone_geyser_pb.SubscribeRequest) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.request = req
 }
 
 // SetCommitmentLevel modifies the commitment level of the stream's request.
-func (s *StreamClient) SetCommitmentLevel(commitmentLevel *geyser_pb.CommitmentLevel) {
+func (s *StreamClient) SetCommitmentLevel(commitmentLevel yellowstone_geyser_pb.CommitmentLevel) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.request.Commitment = commitmentLevel
+	s.request.Commitment = &commitmentLevel
 }
 
 // NewRequest creates a new empty *geyser_pb.SubscribeRequest.
-func (s *StreamClient) NewRequest() *geyser_pb.SubscribeRequest {
-	return &geyser_pb.SubscribeRequest{
-		Accounts:           make(map[string]*geyser_pb.SubscribeRequestFilterAccounts),
-		Slots:              make(map[string]*geyser_pb.SubscribeRequestFilterSlots),
-		Transactions:       make(map[string]*geyser_pb.SubscribeRequestFilterTransactions),
-		TransactionsStatus: make(map[string]*geyser_pb.SubscribeRequestFilterTransactions),
-		Blocks:             make(map[string]*geyser_pb.SubscribeRequestFilterBlocks),
-		BlocksMeta:         make(map[string]*geyser_pb.SubscribeRequestFilterBlocksMeta),
-		Entry:              make(map[string]*geyser_pb.SubscribeRequestFilterEntry),
-		AccountsDataSlice:  make([]*geyser_pb.SubscribeRequestAccountsDataSlice, 0),
+func (s *StreamClient) NewRequest() *yellowstone_geyser_pb.SubscribeRequest {
+	return &yellowstone_geyser_pb.SubscribeRequest{
+		Accounts:           make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterAccounts),
+		Slots:              make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterSlots),
+		Transactions:       make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterTransactions),
+		TransactionsStatus: make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterTransactions),
+		Blocks:             make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterBlocks),
+		BlocksMeta:         make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterBlocksMeta),
+		Entry:              make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterEntry),
+		AccountsDataSlice:  make([]*yellowstone_geyser_pb.SubscribeRequestAccountsDataSlice, 0),
 	}
 }
 
 // SendCustomRequest sends a custom *geyser_pb.SubscribeRequest using the Geyser client.
-func (s *StreamClient) SendCustomRequest(request *geyser_pb.SubscribeRequest) error {
+func (s *StreamClient) SendCustomRequest(request *yellowstone_geyser_pb.SubscribeRequest) error {
 	return s.geyser.Send(request)
 }
 
@@ -168,7 +169,7 @@ func (s *StreamClient) sendRequest() error {
 // SubscribeAccounts subscribes to account updates.
 // Note: This will overwrite existing subscriptions for the given ID.
 // To add new accounts without overwriting, use AppendAccounts.
-func (s *StreamClient) SubscribeAccounts(filterName string, req *geyser_pb.SubscribeRequestFilterAccounts) error {
+func (s *StreamClient) SubscribeAccounts(filterName string, req *yellowstone_geyser_pb.SubscribeRequestFilterAccounts) error {
 	s.mu.Lock()
 	s.request.Accounts[filterName] = req
 	s.mu.Unlock()
@@ -206,7 +207,7 @@ func (s *StreamClient) UnsubscribeAllAccounts(filterName string) error {
 }
 
 // SubscribeSlots subscribes to slot updates.
-func (s *StreamClient) SubscribeSlots(filterName string, req *geyser_pb.SubscribeRequestFilterSlots) error {
+func (s *StreamClient) SubscribeSlots(filterName string, req *yellowstone_geyser_pb.SubscribeRequestFilterSlots) error {
 	s.request.Slots[filterName] = req
 	return s.geyser.Send(s.request)
 }
@@ -218,7 +219,7 @@ func (s *StreamClient) UnsubscribeSlots(filterName string) error {
 }
 
 // SubscribeTransaction subscribes to transaction updates.
-func (s *StreamClient) SubscribeTransaction(filterName string, req *geyser_pb.SubscribeRequestFilterTransactions) error {
+func (s *StreamClient) SubscribeTransaction(filterName string, req *yellowstone_geyser_pb.SubscribeRequestFilterTransactions) error {
 	s.request.Transactions[filterName] = req
 	return s.geyser.Send(s.request)
 }
@@ -230,7 +231,7 @@ func (s *StreamClient) UnsubscribeTransaction(filterName string) error {
 }
 
 // SubscribeTransactionStatus subscribes to transaction status updates.
-func (s *StreamClient) SubscribeTransactionStatus(filterName string, req *geyser_pb.SubscribeRequestFilterTransactions) error {
+func (s *StreamClient) SubscribeTransactionStatus(filterName string, req *yellowstone_geyser_pb.SubscribeRequestFilterTransactions) error {
 	s.request.TransactionsStatus[filterName] = req
 	return s.geyser.Send(s.request)
 }
@@ -241,7 +242,7 @@ func (s *StreamClient) UnsubscribeTransactionStatus(filterName string) error {
 }
 
 // SubscribeBlocks subscribes to block updates.
-func (s *StreamClient) SubscribeBlocks(filterName string, req *geyser_pb.SubscribeRequestFilterBlocks) error {
+func (s *StreamClient) SubscribeBlocks(filterName string, req *yellowstone_geyser_pb.SubscribeRequestFilterBlocks) error {
 	s.request.Blocks[filterName] = req
 	return s.geyser.Send(s.request)
 }
@@ -252,7 +253,7 @@ func (s *StreamClient) UnsubscribeBlocks(filterName string) error {
 }
 
 // SubscribeBlocksMeta subscribes to block metadata updates.
-func (s *StreamClient) SubscribeBlocksMeta(filterName string, req *geyser_pb.SubscribeRequestFilterBlocksMeta) error {
+func (s *StreamClient) SubscribeBlocksMeta(filterName string, req *yellowstone_geyser_pb.SubscribeRequestFilterBlocksMeta) error {
 	s.request.BlocksMeta[filterName] = req
 	return s.geyser.Send(s.request)
 }
@@ -263,7 +264,7 @@ func (s *StreamClient) UnsubscribeBlocksMeta(filterName string) error {
 }
 
 // SubscribeEntry subscribes to entry updates.
-func (s *StreamClient) SubscribeEntry(filterName string, req *geyser_pb.SubscribeRequestFilterEntry) error {
+func (s *StreamClient) SubscribeEntry(filterName string, req *yellowstone_geyser_pb.SubscribeRequestFilterEntry) error {
 	s.request.Entry[filterName] = req
 	return s.geyser.Send(s.request)
 }
@@ -274,7 +275,7 @@ func (s *StreamClient) UnsubscribeEntry(filterName string) error {
 }
 
 // SubscribeAccountDataSlice subscribes to account data slice updates.
-func (s *StreamClient) SubscribeAccountDataSlice(req []*geyser_pb.SubscribeRequestAccountsDataSlice) error {
+func (s *StreamClient) SubscribeAccountDataSlice(req []*yellowstone_geyser_pb.SubscribeRequestAccountsDataSlice) error {
 	s.request.AccountsDataSlice = req
 	return s.geyser.Send(s.request)
 }
@@ -323,11 +324,27 @@ func (s *StreamClient) listen() {
 }
 
 // ConvertTransaction converts a Geyser parsed transaction into an rpc.GetTransactionResult format.
-func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) (*rpc.GetTransactionResult, error) {
-	var tx rpc.GetTransactionResult
+func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransaction) (*rpc.GetTransactionResult, error) {
 
 	meta := geyserTx.Transaction.Meta
 	transaction := geyserTx.Transaction.Transaction
+
+	tx := &rpc.GetTransactionResult{
+		Transaction: &rpc.TransactionResultEnvelope{},
+		Meta: &rpc.TransactionMeta{
+			InnerInstructions: make([]rpc.InnerInstruction, 0),
+			LogMessages:       make([]string, 0),
+			PostBalances:      make([]uint64, 0),
+			PostTokenBalances: make([]rpc.TokenBalance, 0),
+			PreBalances:       make([]uint64, 0),
+			PreTokenBalances:  make([]rpc.TokenBalance, 0),
+			Rewards:           make([]rpc.BlockReward, 0),
+			LoadedAddresses: rpc.LoadedAddresses{
+				ReadOnly: make([]solana.PublicKey, 0),
+				Writable: make([]solana.PublicKey, 0),
+			},
+		},
+	}
 
 	tx.Meta.PreBalances = meta.PreBalances
 	tx.Meta.PostBalances = meta.PostBalances
@@ -407,6 +424,15 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) (*rpc.Ge
 		return nil, err
 	}
 
+	solTx = &solana.Transaction{
+		Signatures: make([]solana.Signature, 0),
+		Message: solana.Message{
+			AccountKeys:         make(solana.PublicKeySlice, len(transaction.Message.AccountKeys)),
+			Instructions:        make([]solana.CompiledInstruction, len(transaction.Message.Instructions)),
+			AddressTableLookups: make(solana.MessageAddressTableLookupSlice, len(transaction.Message.AddressTableLookups)),
+		},
+	}
+
 	if transaction.Message.Versioned {
 		solTx.Message.SetVersion(1)
 	}
@@ -443,10 +469,10 @@ func ConvertTransaction(geyserTx *geyser_pb.SubscribeUpdateTransaction) (*rpc.Ge
 		})
 	}
 
-	return &tx, nil
+	return tx, nil
 }
 
-func BatchConvertTransaction(geyserTxns ...*geyser_pb.SubscribeUpdateTransaction) []*rpc.GetTransactionResult {
+func BatchConvertTransaction(geyserTxns ...*yellowstone_geyser_pb.SubscribeUpdateTransaction) []*rpc.GetTransactionResult {
 	txns := make([]*rpc.GetTransactionResult, len(geyserTxns), 0)
 	for _, tx := range geyserTxns {
 		txn, err := ConvertTransaction(tx)
@@ -459,7 +485,7 @@ func BatchConvertTransaction(geyserTxns ...*geyser_pb.SubscribeUpdateTransaction
 }
 
 // ConvertBlockHash converts a Geyser type block to a github.com/gagliardetto/solana-go Solana block.
-func ConvertBlockHash(geyserBlock *geyser_pb.SubscribeUpdateBlock) *rpc.GetBlockResult {
+func ConvertBlockHash(geyserBlock *yellowstone_geyser_pb.SubscribeUpdateBlock) *rpc.GetBlockResult {
 	block := new(rpc.GetBlockResult)
 
 	blockTime := solana.UnixTimeSeconds(geyserBlock.BlockTime.Timestamp)
@@ -499,7 +525,7 @@ func ConvertBlockHash(geyserBlock *geyser_pb.SubscribeUpdateBlock) *rpc.GetBlock
 	return block
 }
 
-func BatchConvertBlockHash(geyserBlocks ...*geyser_pb.SubscribeUpdateBlock) []*rpc.GetBlockResult {
+func BatchConvertBlockHash(geyserBlocks ...*yellowstone_geyser_pb.SubscribeUpdateBlock) []*rpc.GetBlockResult {
 	blocks := make([]*rpc.GetBlockResult, len(geyserBlocks), 0)
 	for _, block := range geyserBlocks {
 		blocks = append(blocks, ConvertBlockHash(block))
