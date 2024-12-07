@@ -2,19 +2,21 @@ package yellowstone_geyser
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
-	grpc_wee "github.com/weeaa/goyser/grpc"
-	"github.com/weeaa/goyser/yellowstone_geyser/pb"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 	"io"
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
+	"unsafe"
+
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
+	grpc_wee "github.com/weeaa/goyser/grpc"
+	yellowstone_geyser_pb "github.com/weeaa/goyser/yellowstone_geyser/pb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type Client struct {
@@ -384,8 +386,10 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 	}
 
 	for i, innerInst := range meta.InnerInstructions {
+		tx.Meta.InnerInstructions = append(tx.Meta.InnerInstructions, rpc.InnerInstruction{})
 		tx.Meta.InnerInstructions[i].Index = uint16(innerInst.Index)
 		for x, inst := range innerInst.Instructions {
+			tx.Meta.InnerInstructions[i].Instructions = append(tx.Meta.InnerInstructions[i].Instructions, solana.CompiledInstruction{})
 			accounts, err := bytesToUint16Slice(inst.Accounts)
 			if err != nil {
 				return nil, err
@@ -393,9 +397,10 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 
 			tx.Meta.InnerInstructions[i].Instructions[x].Accounts = accounts
 			tx.Meta.InnerInstructions[i].Instructions[x].ProgramIDIndex = uint16(inst.ProgramIdIndex)
-			if err = tx.Meta.InnerInstructions[i].Instructions[x].Data.UnmarshalJSON(inst.Data); err != nil {
-				return nil, err
-			}
+			tx.Meta.InnerInstructions[i].Instructions[x].Data = solana.Base58(inst.Data)
+			// if err = tx.Meta.InnerInstructions[i].Instructions[x].Data.UnmarshalJSON(inst.Data); err != nil {
+			// 	return nil, err
+			// }
 		}
 	}
 
@@ -419,17 +424,17 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 		tx.Meta.LoadedAddresses.ReadOnly = append(tx.Meta.LoadedAddresses.ReadOnly, solana.PublicKeyFromBytes(writableAddress))
 	}
 
-	solTx, err := tx.Transaction.GetTransaction()
-	if err != nil {
-		return nil, err
-	}
+	// solTx, err := tx.Transaction.GetTransaction()
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	solTx = &solana.Transaction{
+	solTx := &solana.Transaction{
 		Signatures: make([]solana.Signature, 0),
 		Message: solana.Message{
-			AccountKeys:         make(solana.PublicKeySlice, len(transaction.Message.AccountKeys)),
-			Instructions:        make([]solana.CompiledInstruction, len(transaction.Message.Instructions)),
-			AddressTableLookups: make(solana.MessageAddressTableLookupSlice, len(transaction.Message.AddressTableLookups)),
+			AccountKeys:         make(solana.PublicKeySlice, 0),
+			Instructions:        make([]solana.CompiledInstruction, 0),
+			AddressTableLookups: make(solana.MessageAddressTableLookupSlice, 0),
 		},
 	}
 
@@ -456,6 +461,10 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 		})
 	}
 
+	for _, key := range transaction.Message.AccountKeys {
+		solTx.Message.AccountKeys = append(solTx.Message.AccountKeys, solana.PublicKeyFromBytes(key))
+	}
+
 	for _, inst := range transaction.Message.Instructions {
 		accounts, err := bytesToUint16Slice(inst.Accounts)
 		if err != nil {
@@ -468,6 +477,13 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 			Data:           inst.Data,
 		})
 	}
+
+	func(obj interface{}, fieldName string, value interface{}) {
+		v := reflect.ValueOf(obj).Elem()
+		f := v.FieldByName(fieldName)
+		ptr := unsafe.Pointer(f.UnsafeAddr())
+		reflect.NewAt(f.Type(), ptr).Elem().Set(reflect.ValueOf(value))
+	}(tx.Transaction, "asParsedTransaction", solTx)
 
 	return tx, nil
 }
@@ -533,15 +549,25 @@ func BatchConvertBlockHash(geyserBlocks ...*yellowstone_geyser_pb.SubscribeUpdat
 	return blocks
 }
 
+// func bytesToUint16Slice(data []byte) ([]uint16, error) {
+// 	if len(data)%2 != 0 {
+// 		return nil, fmt.Errorf("length of byte slice must be even to convert to uint16 slice")
+// 	}
+
+// 	uint16s := make([]uint16, len(data)/2)
+
+// 	for i := 0; i < len(data); i += 2 {
+// 		uint16s[i/2] = binary.LittleEndian.Uint16(data[i : i+2])
+// 	}
+
+// 	return uint16s, nil
+// }
+
 func bytesToUint16Slice(data []byte) ([]uint16, error) {
-	if len(data)%2 != 0 {
-		return nil, fmt.Errorf("length of byte slice must be even to convert to uint16 slice")
-	}
+	uint16s := make([]uint16, len(data))
 
-	uint16s := make([]uint16, len(data)/2)
-
-	for i := 0; i < len(data); i += 2 {
-		uint16s[i/2] = binary.LittleEndian.Uint16(data[i : i+2])
+	for i := 0; i < len(data); i += 1 {
+		uint16s[i] = uint16(data[i])
 	}
 
 	return uint16s, nil
