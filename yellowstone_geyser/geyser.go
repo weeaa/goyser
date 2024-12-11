@@ -346,6 +346,7 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 				Writable: make([]solana.PublicKey, 0),
 			},
 		},
+		Slot: geyserTx.Slot,
 	}
 
 	tx.Meta.PreBalances = meta.PreBalances
