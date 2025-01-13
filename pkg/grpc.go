@@ -1,4 +1,4 @@
-package grpc_wee
+package pkg
 
 import (
 	"context"
