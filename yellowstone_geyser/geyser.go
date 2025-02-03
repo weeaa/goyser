@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/weeaa/goyser/pkg"
 	"io"
 	"reflect"
 	"slices"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
-	grpc_wee "github.com/weeaa/goyser/grpc"
 	yellowstone_geyser_pb "github.com/weeaa/goyser/yellowstone_geyser/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -44,7 +44,7 @@ type StreamClient struct {
 // New creates a new Client instance.
 func New(ctx context.Context, grpcDialURL string, md metadata.MD) (*Client, error) {
 	ch := make(chan error)
-	conn, err := grpc_wee.CreateAndObserveGRPCConn(ctx, ch, grpcDialURL, md)
+	conn, err := pkg.CreateAndObserveGRPCConn(ctx, ch, grpcDialURL, md)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +327,6 @@ func (s *StreamClient) listen() {
 
 // ConvertTransaction converts a Geyser parsed transaction into an rpc.GetTransactionResult format.
 func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransaction) (*rpc.GetTransactionResult, error) {
-
 	meta := geyserTx.Transaction.Meta
 	transaction := geyserTx.Transaction.Transaction
 
@@ -398,7 +397,7 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 
 			tx.Meta.InnerInstructions[i].Instructions[x].Accounts = accounts
 			tx.Meta.InnerInstructions[i].Instructions[x].ProgramIDIndex = uint16(inst.ProgramIdIndex)
-			tx.Meta.InnerInstructions[i].Instructions[x].Data = solana.Base58(inst.Data)
+			tx.Meta.InnerInstructions[i].Instructions[x].Data = inst.Data
 			// if err = tx.Meta.InnerInstructions[i].Instructions[x].Data.UnmarshalJSON(inst.Data); err != nil {
 			// 	return nil, err
 			// }
