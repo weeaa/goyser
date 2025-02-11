@@ -4,19 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/weeaa/goyser/pkg"
+	"github.com/weeaa/goyser/yellowstone_geyser/pb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"io"
-	"reflect"
 	"slices"
 	"strconv"
 	"sync"
-	"unsafe"
-
-	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
-	yellowstone_geyser_pb "github.com/weeaa/goyser/yellowstone_geyser/pb"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
 
 type Client struct {
@@ -325,34 +322,39 @@ func (s *StreamClient) listen() {
 	}
 }
 
+/*
 // ConvertTransaction converts a Geyser parsed transaction into an rpc.GetTransactionResult format.
-func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransaction) (*rpc.GetTransactionResult, error) {
+func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransaction) (*rpc.GetParsedTransactionResult, error) {
 	meta := geyserTx.Transaction.Meta
 	transaction := geyserTx.Transaction.Transaction
 
-	tx := &rpc.GetTransactionResult{
-		Transaction: &rpc.TransactionResultEnvelope{},
-		Meta: &rpc.TransactionMeta{
-			InnerInstructions: make([]rpc.InnerInstruction, 0),
-			LogMessages:       make([]string, 0),
+	tx := &rpc.GetParsedTransactionResult{
+		Transaction: &rpc.ParsedTransaction{
+			Signatures: make([]solana.Signature, 0),
+			Message: rpc.ParsedMessage{
+				AccountKeys:     make([]rpc.ParsedMessageAccount, 0),
+				Instructions:    make([]*rpc.ParsedInstruction, 0),
+				RecentBlockHash: string(transaction.Message.RecentBlockhash),
+			},
+		},
+		Meta: &rpc.ParsedTransactionMeta{
+			InnerInstructions: make([]rpc.ParsedInnerInstruction, 0),
+			LogMessages:       meta.LogMessages,
 			PostBalances:      make([]uint64, 0),
 			PostTokenBalances: make([]rpc.TokenBalance, 0),
 			PreBalances:       make([]uint64, 0),
 			PreTokenBalances:  make([]rpc.TokenBalance, 0),
-			Rewards:           make([]rpc.BlockReward, 0),
-			LoadedAddresses: rpc.LoadedAddresses{
-				ReadOnly: make([]solana.PublicKey, 0),
-				Writable: make([]solana.PublicKey, 0),
-			},
+			//Rewards:           make([]rpc.BlockReward, 0),
 		},
 		Slot: geyserTx.Slot,
+		//Version: transaction.Message.Versioned, todo
 	}
 
 	tx.Meta.PreBalances = meta.PreBalances
 	tx.Meta.PostBalances = meta.PostBalances
 	tx.Meta.Err = meta.Err
 	tx.Meta.Fee = meta.Fee
-	tx.Meta.ComputeUnitsConsumed = meta.ComputeUnitsConsumed
+	//tx.Meta.ComputeUnitsConsumed = meta.ComputeUnitsConsumed
 	tx.Meta.LogMessages = meta.LogMessages
 
 	for _, preTokenBalance := range meta.PreTokenBalances {
@@ -386,18 +388,21 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 	}
 
 	for i, innerInst := range meta.InnerInstructions {
-		tx.Meta.InnerInstructions = append(tx.Meta.InnerInstructions, rpc.InnerInstruction{})
-		tx.Meta.InnerInstructions[i].Index = uint16(innerInst.Index)
+		tx.Meta.InnerInstructions = append(tx.Meta.InnerInstructions, rpc.ParsedInnerInstruction{})
+		tx.Meta.InnerInstructions[i].Index = uint64(innerInst.Index)
 		for x, inst := range innerInst.Instructions {
-			tx.Meta.InnerInstructions[i].Instructions = append(tx.Meta.InnerInstructions[i].Instructions, solana.CompiledInstruction{})
+			tx.Meta.InnerInstructions[i].Instructions = append(tx.Meta.InnerInstructions[i].Instructions, &rpc.ParsedInstruction{})
 			accounts, err := bytesToUint16Slice(inst.Accounts)
 			if err != nil {
 				return nil, err
 			}
 
+			//tx.Meta.InnerInstructions[i].Instructions[x].Parsed
+
 			tx.Meta.InnerInstructions[i].Instructions[x].Accounts = accounts
 			tx.Meta.InnerInstructions[i].Instructions[x].ProgramIDIndex = uint16(inst.ProgramIdIndex)
 			tx.Meta.InnerInstructions[i].Instructions[x].Data = inst.Data
+			tx.Meta.InnerInstructions[i].Instructions[x].Program = inst.
 			// if err = tx.Meta.InnerInstructions[i].Instructions[x].Data.UnmarshalJSON(inst.Data); err != nil {
 			// 	return nil, err
 			// }
@@ -487,7 +492,9 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 
 	return tx, nil
 }
+*/
 
+/*
 func BatchConvertTransaction(geyserTxns ...*yellowstone_geyser_pb.SubscribeUpdateTransaction) []*rpc.GetTransactionResult {
 	txns := make([]*rpc.GetTransactionResult, len(geyserTxns), 0)
 	for _, tx := range geyserTxns {
@@ -499,6 +506,7 @@ func BatchConvertTransaction(geyserTxns ...*yellowstone_geyser_pb.SubscribeUpdat
 	}
 	return txns
 }
+*/
 
 // ConvertBlockHash converts a Geyser type block to a github.com/gagliardetto/solana-go Solana block.
 func ConvertBlockHash(geyserBlock *yellowstone_geyser_pb.SubscribeUpdateBlock) *rpc.GetBlockResult {
