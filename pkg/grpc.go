@@ -8,7 +8,6 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"net/url"
@@ -47,8 +46,6 @@ func CreateAndObserveGRPCConn(ctx context.Context, ch chan error, target string,
 		Timeout:             5 * time.Second,
 		PermitWithoutStream: true,
 	}))
-
-	opts = append(opts, grpc.WithDefaultCallOptions(grpc.UseCompressor(gzip.Name)))
 
 	conn, err := grpc.NewClient(address, opts...)
 	if err != nil {
