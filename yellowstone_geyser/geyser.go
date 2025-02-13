@@ -11,17 +11,21 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"io"
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
+	"time"
+	"unsafe"
 )
 
 type Client struct {
-	grpcConn *grpc.ClientConn
-	Ctx      context.Context
-	Geyser   yellowstone_geyser_pb.GeyserClient
-	ErrCh    chan error
-	s        *streamManager
+	Ctx            context.Context
+	GrpcConn       *grpc.ClientConn
+	KeepAliveCount int32
+	Geyser         yellowstone_geyser_pb.GeyserClient
+	ErrCh          chan error
+	s              *streamManager
 }
 
 type streamManager struct {
@@ -30,12 +34,17 @@ type streamManager struct {
 }
 
 type StreamClient struct {
-	Ctx     context.Context
-	geyser  yellowstone_geyser_pb.Geyser_SubscribeClient
-	request *yellowstone_geyser_pb.SubscribeRequest
-	Ch      chan *yellowstone_geyser_pb.SubscribeUpdate
-	ErrCh   chan error
-	mu      sync.RWMutex
+	Ctx        context.Context
+	geyserConn yellowstone_geyser_pb.GeyserClient
+	geyser     yellowstone_geyser_pb.Geyser_SubscribeClient
+	request    *yellowstone_geyser_pb.SubscribeRequest
+	Ch         chan *yellowstone_geyser_pb.SubscribeUpdate
+	ErrCh      chan error
+	mu         sync.RWMutex
+
+	countMu     sync.RWMutex
+	count       int32
+	latestCount time.Time
 }
 
 // New creates a new Client instance.
@@ -53,7 +62,7 @@ func New(ctx context.Context, grpcDialURL string, md metadata.MD) (*Client, erro
 	}
 
 	return &Client{
-		grpcConn: conn,
+		GrpcConn: conn,
 		Ctx:      ctx,
 		Geyser:   geyserClient,
 		ErrCh:    ch,
@@ -69,7 +78,7 @@ func (c *Client) Close() error {
 	for _, sc := range c.s.clients {
 		sc.Stop()
 	}
-	return c.grpcConn.Close()
+	return c.GrpcConn.Close()
 }
 
 func (c *Client) Ping(count int32) (*yellowstone_geyser_pb.PongResponse, error) {
@@ -111,6 +120,7 @@ func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitm
 
 	c.s.clients[streamName] = streamClient
 	go streamClient.listen()
+	go streamClient.keepAlive()
 
 	return nil
 }
@@ -322,9 +332,201 @@ func (s *StreamClient) listen() {
 	}
 }
 
+// keepAlive sends every 10 second a ping to the gRPC conn in order to keep it alive.
+func (s *StreamClient) keepAlive() {
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-s.Ctx.Done():
+				return
+			case <-ticker.C:
+				s.count++
+				s.latestCount = time.Now()
+				if _, err := s.geyserConn.Ping(s.Ctx,
+					&yellowstone_geyser_pb.PingRequest{
+						Count: s.count,
+					},
+				); err != nil {
+					s.ErrCh <- err
+					continue
+				}
+			}
+		}
+	}()
+}
+
+// GetKeepAliveCountAndTimestamp returns the
+func (s *StreamClient) GetKeepAliveCountAndTimestamp() (int32, time.Time) {
+	return s.count, s.latestCount
+}
+
+// ConvertTransaction converts a Geyser parsed transaction into *rpc.GetTransactionResult.
+func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransaction) (*rpc.GetTransactionResult, error) {
+	meta := geyserTx.Transaction.Meta
+	transaction := geyserTx.Transaction.Transaction
+
+	tx := &rpc.GetTransactionResult{
+		Transaction: &rpc.TransactionResultEnvelope{},
+		Meta: &rpc.TransactionMeta{
+			InnerInstructions: make([]rpc.InnerInstruction, 0),
+			LogMessages:       make([]string, 0),
+			PostBalances:      make([]uint64, 0),
+			PostTokenBalances: make([]rpc.TokenBalance, 0),
+			PreBalances:       make([]uint64, 0),
+			PreTokenBalances:  make([]rpc.TokenBalance, 0),
+			Rewards:           make([]rpc.BlockReward, 0),
+			LoadedAddresses: rpc.LoadedAddresses{
+				ReadOnly: make([]solana.PublicKey, 0),
+				Writable: make([]solana.PublicKey, 0),
+			},
+		},
+		Slot: geyserTx.Slot,
+	}
+
+	tx.Meta.PreBalances = meta.PreBalances
+	tx.Meta.PostBalances = meta.PostBalances
+	tx.Meta.Err = meta.Err
+	tx.Meta.Fee = meta.Fee
+	tx.Meta.ComputeUnitsConsumed = meta.ComputeUnitsConsumed
+	tx.Meta.LogMessages = meta.LogMessages
+
+	for _, preTokenBalance := range meta.PreTokenBalances {
+		owner := solana.MustPublicKeyFromBase58(preTokenBalance.Owner)
+		tx.Meta.PreTokenBalances = append(tx.Meta.PreTokenBalances, rpc.TokenBalance{
+			AccountIndex: uint16(preTokenBalance.AccountIndex),
+			Owner:        &owner,
+			Mint:         solana.MustPublicKeyFromBase58(preTokenBalance.Mint),
+			UiTokenAmount: &rpc.UiTokenAmount{
+				Amount:         preTokenBalance.UiTokenAmount.Amount,
+				Decimals:       uint8(preTokenBalance.UiTokenAmount.Decimals),
+				UiAmount:       &preTokenBalance.UiTokenAmount.UiAmount,
+				UiAmountString: preTokenBalance.UiTokenAmount.UiAmountString,
+			},
+		})
+	}
+
+	for _, postTokenBalance := range meta.PostTokenBalances {
+		owner := solana.MustPublicKeyFromBase58(postTokenBalance.Owner)
+		tx.Meta.PostTokenBalances = append(tx.Meta.PostTokenBalances, rpc.TokenBalance{
+			AccountIndex: uint16(postTokenBalance.AccountIndex),
+			Owner:        &owner,
+			Mint:         solana.MustPublicKeyFromBase58(postTokenBalance.Mint),
+			UiTokenAmount: &rpc.UiTokenAmount{
+				Amount:         postTokenBalance.UiTokenAmount.Amount,
+				Decimals:       uint8(postTokenBalance.UiTokenAmount.Decimals),
+				UiAmount:       &postTokenBalance.UiTokenAmount.UiAmount,
+				UiAmountString: postTokenBalance.UiTokenAmount.UiAmountString,
+			},
+		})
+	}
+
+	for i, innerInst := range meta.InnerInstructions {
+		tx.Meta.InnerInstructions = append(tx.Meta.InnerInstructions, rpc.InnerInstruction{})
+		tx.Meta.InnerInstructions[i].Index = uint16(innerInst.Index)
+		for x, inst := range innerInst.Instructions {
+			tx.Meta.InnerInstructions[i].Instructions = append(tx.Meta.InnerInstructions[i].Instructions, solana.CompiledInstruction{})
+			accounts, err := bytesToUint16Slice(inst.Accounts)
+			if err != nil {
+				return nil, err
+			}
+
+			tx.Meta.InnerInstructions[i].Instructions[x].Accounts = accounts
+			tx.Meta.InnerInstructions[i].Instructions[x].ProgramIDIndex = uint16(inst.ProgramIdIndex)
+			tx.Meta.InnerInstructions[i].Instructions[x].Data = inst.Data
+			// if err = tx.Meta.InnerInstructions[i].Instructions[x].Data.UnmarshalJSON(inst.Data); err != nil {
+			// 	return nil, err
+			// }
+		}
+	}
+
+	for _, reward := range meta.Rewards {
+		comm, _ := strconv.ParseUint(reward.Commission, 10, 64)
+		commission := uint8(comm)
+		tx.Meta.Rewards = append(tx.Meta.Rewards, rpc.BlockReward{
+			Pubkey:      solana.MustPublicKeyFromBase58(reward.Pubkey),
+			Lamports:    reward.Lamports,
+			PostBalance: reward.PostBalance,
+			RewardType:  rpc.RewardType(reward.RewardType.String()),
+			Commission:  &commission,
+		})
+	}
+
+	for _, readOnlyAddress := range meta.LoadedReadonlyAddresses {
+		tx.Meta.LoadedAddresses.ReadOnly = append(tx.Meta.LoadedAddresses.ReadOnly, solana.PublicKeyFromBytes(readOnlyAddress))
+	}
+
+	for _, writableAddress := range meta.LoadedWritableAddresses {
+		tx.Meta.LoadedAddresses.ReadOnly = append(tx.Meta.LoadedAddresses.ReadOnly, solana.PublicKeyFromBytes(writableAddress))
+	}
+
+	// solTx, err := tx.Transaction.GetTransaction()
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	solTx := &solana.Transaction{
+		Signatures: make([]solana.Signature, 0),
+		Message: solana.Message{
+			AccountKeys:         make(solana.PublicKeySlice, 0),
+			Instructions:        make([]solana.CompiledInstruction, 0),
+			AddressTableLookups: make(solana.MessageAddressTableLookupSlice, 0),
+		},
+	}
+
+	if transaction.Message.Versioned {
+		solTx.Message.SetVersion(1)
+	}
+
+	solTx.Message.RecentBlockhash = solana.HashFromBytes(transaction.Message.RecentBlockhash)
+	solTx.Message.Header = solana.MessageHeader{
+		NumRequiredSignatures:       uint8(transaction.Message.Header.NumRequiredSignatures),
+		NumReadonlySignedAccounts:   uint8(transaction.Message.Header.NumReadonlySignedAccounts),
+		NumReadonlyUnsignedAccounts: uint8(transaction.Message.Header.NumReadonlyUnsignedAccounts),
+	}
+
+	for _, sig := range transaction.Signatures {
+		solTx.Signatures = append(solTx.Signatures, solana.SignatureFromBytes(sig))
+	}
+
+	for _, table := range transaction.Message.AddressTableLookups {
+		solTx.Message.AddressTableLookups = append(solTx.Message.AddressTableLookups, solana.MessageAddressTableLookup{
+			AccountKey:      solana.PublicKeyFromBytes(table.AccountKey),
+			WritableIndexes: table.WritableIndexes,
+			ReadonlyIndexes: table.ReadonlyIndexes,
+		})
+	}
+
+	for _, key := range transaction.Message.AccountKeys {
+		solTx.Message.AccountKeys = append(solTx.Message.AccountKeys, solana.PublicKeyFromBytes(key))
+	}
+
+	for _, inst := range transaction.Message.Instructions {
+		accounts, err := bytesToUint16Slice(inst.Accounts)
+		if err != nil {
+			return nil, err
+		}
+
+		solTx.Message.Instructions = append(solTx.Message.Instructions, solana.CompiledInstruction{
+			ProgramIDIndex: uint16(inst.ProgramIdIndex),
+			Accounts:       accounts,
+			Data:           inst.Data,
+		})
+	}
+
+	func(obj interface{}, fieldName string, value interface{}) {
+		v := reflect.ValueOf(obj).Elem()
+		f := v.FieldByName(fieldName)
+		ptr := unsafe.Pointer(f.UnsafeAddr())
+		reflect.NewAt(f.Type(), ptr).Elem().Set(reflect.ValueOf(value))
+	}(tx.Transaction, "asParsedTransaction", solTx)
+
+	return tx, nil
+}
+
 /*
-// ConvertTransaction converts a Geyser parsed transaction into an rpc.GetTransactionResult format.
-func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransaction) (*rpc.GetParsedTransactionResult, error) {
+// ConvertTransactionf converts a Geyser parsed transaction into an rpc.GetTransactionResult format.
+func ConvertTransactionf(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransaction) (*rpc.GetParsedTransactionResult, error) {
 	meta := geyserTx.Transaction.Meta
 	transaction := geyserTx.Transaction.Transaction
 
