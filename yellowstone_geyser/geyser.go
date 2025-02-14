@@ -99,9 +99,10 @@ func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitm
 		return err
 	}
 
-	streamClient := &StreamClient{
-		Ctx:    ctx,
-		geyser: stream,
+	streamClient := StreamClient{
+		Ctx:        ctx,
+		geyser:     stream,
+		geyserConn: c.Geyser,
 		request: &yellowstone_geyser_pb.SubscribeRequest{
 			Accounts:           make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterAccounts),
 			Slots:              make(map[string]*yellowstone_geyser_pb.SubscribeRequestFilterSlots),
@@ -118,7 +119,7 @@ func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitm
 		mu:    sync.RWMutex{},
 	}
 
-	c.s.clients[streamName] = streamClient
+	c.s.clients[streamName] = &streamClient
 	go streamClient.listen()
 	go streamClient.keepAlive()
 
