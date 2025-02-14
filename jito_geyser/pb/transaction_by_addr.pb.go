@@ -543,7 +543,7 @@ func (x *Memo) GetMemo() string {
 	return ""
 }
 
-type TransactionError struct {
+type TransactionErrorDup struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -553,20 +553,20 @@ type TransactionError struct {
 	TransactionDetails *TransactionDetails  `protobuf:"bytes,3,opt,name=transaction_details,json=transactionDetails,proto3" json:"transaction_details,omitempty"`
 }
 
-func (x *TransactionError) Reset() {
-	*x = TransactionError{}
+func (x *TransactionErrorDup) Reset() {
+	*x = TransactionErrorDup{}
 	mi := &file_transaction_by_addr_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *TransactionError) String() string {
+func (x *TransactionErrorDup) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*TransactionError) ProtoMessage() {}
+func (*TransactionErrorDup) ProtoMessage() {}
 
-func (x *TransactionError) ProtoReflect() protoreflect.Message {
+func (x *TransactionErrorDup) ProtoReflect() protoreflect.Message {
 	mi := &file_transaction_by_addr_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -579,25 +579,25 @@ func (x *TransactionError) ProtoReflect() protoreflect.Message {
 }
 
 // Deprecated: Use TransactionError.ProtoReflect.Descriptor instead.
-func (*TransactionError) Descriptor() ([]byte, []int) {
+func (*TransactionErrorDup) Descriptor() ([]byte, []int) {
 	return file_transaction_by_addr_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *TransactionError) GetTransactionError() TransactionErrorType {
+func (x *TransactionErrorDup) GetTransactionError() TransactionErrorType {
 	if x != nil {
 		return x.TransactionError
 	}
 	return TransactionErrorType_ACCOUNT_IN_USE
 }
 
-func (x *TransactionError) GetInstructionError() *InstructionError {
+func (x *TransactionErrorDup) GetInstructionError() *InstructionError {
 	if x != nil {
 		return x.InstructionError
 	}
 	return nil
 }
 
-func (x *TransactionError) GetTransactionDetails() *TransactionDetails {
+func (x *TransactionErrorDup) GetTransactionDetails() *TransactionDetails {
 	if x != nil {
 		return x.TransactionDetails
 	}
