@@ -50,16 +50,17 @@ type StreamClient struct {
 // New creates a new Client instance.
 func New(ctx context.Context, grpcDialURL string, md metadata.MD) (*Client, error) {
 	ch := make(chan error)
-	conn, err := pkg.CreateAndObserveGRPCConn(ctx, ch, grpcDialURL, md)
+
+	if md != nil {
+		ctx = metadata.NewOutgoingContext(ctx, md)
+	}
+
+	conn, err := pkg.CreateAndObserveGRPCConn(ctx, ch, grpcDialURL)
 	if err != nil {
 		return nil, err
 	}
 
 	geyserClient := yellowstone_geyser_pb.NewGeyserClient(conn)
-
-	if md != nil {
-		ctx = metadata.NewOutgoingContext(ctx, md)
-	}
 
 	return &Client{
 		GrpcConn: conn,
