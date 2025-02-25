@@ -37,6 +37,7 @@ type streamManager struct {
 type StreamClient struct {
 	Ctx        context.Context
 	GrpcConn   *grpc.ClientConn
+	streamName string
 	geyserConn yellowstone_geyser_pb.GeyserClient
 	geyser     yellowstone_geyser_pb.Geyser_SubscribeClient
 	request    *yellowstone_geyser_pb.SubscribeRequest
@@ -105,6 +106,7 @@ func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitm
 	streamClient := StreamClient{
 		Ctx:        ctx,
 		GrpcConn:   c.GrpcConn,
+		streamName: streamName,
 		geyser:     stream,
 		geyserConn: c.Geyser,
 		request: &yellowstone_geyser_pb.SubscribeRequest{
@@ -141,6 +143,10 @@ func (c *Client) GetStreamClient(streamName string) *StreamClient {
 	defer c.s.mu.RUnlock()
 	c.s.mu.RLock()
 	return c.s.clients[streamName]
+}
+
+func (s *StreamClient) GetStreamName() string {
+	return s.streamName
 }
 
 // SetRequest sets a custom request to be used across all methods.
@@ -359,7 +365,7 @@ func (s *StreamClient) keepAlive() {
 						s.ErrCh <- err
 					}
 				} else {
-					s.ErrCh <- fmt.Errorf("error keeping alive conn: expected %s or %s, got %s", connectivity.Idle.String(), connectivity.Ready.String(), state.String())
+					s.ErrCh <- fmt.Errorf("%s: error keeping alive conn: expected %s or %s, got %s", s.streamName, connectivity.Idle.String(), connectivity.Ready.String(), state.String())
 				}
 			}
 		}
