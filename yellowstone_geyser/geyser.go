@@ -350,7 +350,7 @@ func (s *StreamClient) keepAlive() {
 				s.latestCount = time.Now()
 
 				state := s.GrpcConn.GetState()
-				if state == connectivity.Idle {
+				if state == connectivity.Idle || state == connectivity.Ready {
 					if _, err := s.geyserConn.Ping(s.Ctx,
 						&yellowstone_geyser_pb.PingRequest{
 							Count: s.count,
