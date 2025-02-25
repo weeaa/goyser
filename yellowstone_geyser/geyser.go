@@ -359,7 +359,7 @@ func (s *StreamClient) keepAlive() {
 						s.ErrCh <- err
 					}
 				} else {
-					s.ErrCh <- fmt.Errorf("error keeping alive conn: expected %s, got %s", connectivity.Idle.String(), state.String())
+					s.ErrCh <- fmt.Errorf("error keeping alive conn: expected %s or %s, got %s", connectivity.Idle.String(), connectivity.Ready.String(), state.String())
 				}
 			}
 		}
