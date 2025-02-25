@@ -9,6 +9,7 @@ import (
 	"github.com/weeaa/goyser/pkg"
 	"github.com/weeaa/goyser/yellowstone_geyser/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 	"io"
 	"reflect"
@@ -35,6 +36,7 @@ type streamManager struct {
 
 type StreamClient struct {
 	Ctx        context.Context
+	GrpcConn   *grpc.ClientConn
 	geyserConn yellowstone_geyser_pb.GeyserClient
 	geyser     yellowstone_geyser_pb.Geyser_SubscribeClient
 	request    *yellowstone_geyser_pb.SubscribeRequest
@@ -102,6 +104,7 @@ func (c *Client) AddStreamClient(ctx context.Context, streamName string, commitm
 
 	streamClient := StreamClient{
 		Ctx:        ctx,
+		GrpcConn:   c.GrpcConn,
 		geyser:     stream,
 		geyserConn: c.Geyser,
 		request: &yellowstone_geyser_pb.SubscribeRequest{
@@ -336,8 +339,8 @@ func (s *StreamClient) listen() {
 
 // keepAlive sends every 10 second a ping to the gRPC conn in order to keep it alive.
 func (s *StreamClient) keepAlive() {
-	ticker := time.NewTicker(10 * time.Second)
 	go func() {
+		ticker := time.NewTicker(10 * time.Second)
 		for {
 			select {
 			case <-s.Ctx.Done():
@@ -345,13 +348,18 @@ func (s *StreamClient) keepAlive() {
 			case <-ticker.C:
 				s.count++
 				s.latestCount = time.Now()
-				if _, err := s.geyserConn.Ping(s.Ctx,
-					&yellowstone_geyser_pb.PingRequest{
-						Count: s.count,
-					},
-				); err != nil {
-					s.ErrCh <- err
-					continue
+
+				state := s.GrpcConn.GetState()
+				if state == connectivity.Idle {
+					if _, err := s.geyserConn.Ping(s.Ctx,
+						&yellowstone_geyser_pb.PingRequest{
+							Count: s.count,
+						},
+					); err != nil {
+						s.ErrCh <- err
+					}
+				} else {
+					s.ErrCh <- fmt.Errorf("error keeping alive conn: expected %s, got %s", connectivity.Idle.String(), state.String())
 				}
 			}
 		}

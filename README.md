@@ -56,15 +56,15 @@ go get github.com/weeaa/goyser@latest
 
 ## 💻 Examples
 
-### `Subscribe to Account`
+### `Subscribe to Account – Yellowstone`
 Simple example on how to monitor an account for transactions with explanations.
 ```go
 package main
 
 import (
   "context"
-  "github.com/weeaa/goyser"
-  "github.com/weeaa/goyser/pb"
+  "github.com/weeaa/goyser/yellowstone_geyser"
+  geyser_pb "github.com/weeaa/goyser/yellowstone_geyser/pb"
   "log"
   "os"
   "time"
@@ -79,14 +79,14 @@ func main() {
   geyserRPC := os.Getenv("GEYSER_RPC")
 
   // create geyser client
-  client, err := goyser.New(ctx, geyserRPC, nil)
+  client, err := yellowstone_geyser.New(ctx, geyserRPC, nil)
   if err != nil {
     log.Fatal(err)
   }
 
   // create a new subscribe client which is tied, for our example we will name it main
   // the created client is stored in client.Streams
-  if err = client.AddStreamClient(ctx, "main"); err != nil {
+  if err = client.AddStreamClient(ctx, "main", geyser_pb.CommitmentLevel_CONFIRMED); err != nil {
     log.Fatal(err)
   }
 
