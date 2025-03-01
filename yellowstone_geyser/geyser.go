@@ -82,6 +82,7 @@ func (c *Client) Close() error {
 	for _, sc := range c.s.clients {
 		sc.Stop()
 	}
+	close(c.ErrCh)
 	return c.GrpcConn.Close()
 }
 
@@ -345,31 +346,29 @@ func (s *StreamClient) listen() {
 
 // keepAlive sends every 10 second a ping to the gRPC conn in order to keep it alive.
 func (s *StreamClient) keepAlive() {
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		for {
-			select {
-			case <-s.Ctx.Done():
-				return
-			case <-ticker.C:
-				s.count++
-				s.latestCount = time.Now()
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		select {
+		case <-s.Ctx.Done():
+			return
+		case <-ticker.C:
+			s.count++
+			s.latestCount = time.Now()
 
-				state := s.GrpcConn.GetState()
-				if state == connectivity.Idle || state == connectivity.Ready {
-					if _, err := s.geyserConn.Ping(s.Ctx,
-						&yellowstone_geyser_pb.PingRequest{
-							Count: s.count,
-						},
-					); err != nil {
-						s.ErrCh <- err
-					}
-				} else {
-					s.ErrCh <- fmt.Errorf("%s: error keeping alive conn: expected %s or %s, got %s", s.streamName, connectivity.Idle.String(), connectivity.Ready.String(), state.String())
+			state := s.GrpcConn.GetState()
+			if state == connectivity.Idle || state == connectivity.Ready {
+				if _, err := s.geyserConn.Ping(s.Ctx,
+					&yellowstone_geyser_pb.PingRequest{
+						Count: s.count,
+					},
+				); err != nil {
+					s.ErrCh <- err
 				}
+			} else {
+				s.ErrCh <- fmt.Errorf("%s: error keeping alive conn: expected %s or %s, got %s", s.streamName, connectivity.Idle.String(), connectivity.Ready.String(), state.String())
 			}
 		}
-	}()
+	}
 }
 
 // GetKeepAliveCountAndTimestamp returns the
@@ -473,7 +472,7 @@ func ConvertTransaction(geyserTx *yellowstone_geyser_pb.SubscribeUpdateTransacti
 	}
 
 	for _, writableAddress := range meta.LoadedWritableAddresses {
-		tx.Meta.LoadedAddresses.ReadOnly = append(tx.Meta.LoadedAddresses.ReadOnly, solana.PublicKeyFromBytes(writableAddress))
+		tx.Meta.LoadedAddresses.Writable = append(tx.Meta.LoadedAddresses.Writable, solana.PublicKeyFromBytes(writableAddress))
 	}
 
 	// solTx, err := tx.Transaction.GetTransaction()
