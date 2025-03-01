@@ -308,9 +308,6 @@ func (s *StreamClient) UnsubscribeAccountDataSlice() error {
 
 // listen starts listening for responses and errors.
 func (s *StreamClient) listen() {
-	defer close(s.Ch)
-	defer close(s.ErrCh)
-
 	for {
 		select {
 		case <-s.Ctx.Done():
@@ -362,13 +359,28 @@ func (s *StreamClient) keepAlive() {
 						Count: s.count,
 					},
 				); err != nil {
+					if isChannelClosed(s.ErrCh) {
+						s.ErrCh = make(chan error)
+					}
 					s.ErrCh <- err
 				}
 			} else {
+				if isChannelClosed(s.ErrCh) {
+					s.ErrCh = make(chan error)
+				}
 				s.ErrCh <- fmt.Errorf("%s: error keeping alive conn: expected %s or %s, got %s", s.streamName, connectivity.Idle.String(), connectivity.Ready.String(), state.String())
 			}
 		}
 	}
+}
+
+func isChannelClosed(ch <-chan error) bool {
+	select {
+	case _, ok := <-ch:
+		return !ok
+	default:
+	}
+	return false
 }
 
 // GetKeepAliveCountAndTimestamp returns the
