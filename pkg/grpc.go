@@ -8,13 +8,13 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"net/url"
 	"time"
 )
 
 // CreateAndObserveGRPCConn creates a new gRPC connection and observes its conn status.
-func CreateAndObserveGRPCConn(ctx context.Context, ch chan error, target string) (*grpc.ClientConn, error) {
-	var opts []grpc.DialOption
+func CreateAndObserveGRPCConn(ctx context.Context, ch chan error, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	u, err := url.Parse(target)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,12 @@ func CreateAndObserveGRPCConn(ctx context.Context, ch chan error, target string)
 	opts = append(opts, grpc.WithDefaultCallOptions(
 		grpc.MaxCallRecvMsgSize(100*1024*1024),
 		grpc.MaxCallSendMsgSize(100*1024*1024),
-	))
+	),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:    10 * time.Second,
+			Timeout: 5 * time.Second,
+		}),
+	)
 
 	conn, err := grpc.NewClient(address, opts...)
 	if err != nil {
