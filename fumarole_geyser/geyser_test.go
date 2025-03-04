@@ -3,17 +3,27 @@ package fumarole_geyser
 import (
 	"context"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/weeaa/goyser/fumarole_geyser/pb"
 	"google.golang.org/grpc/metadata"
-	"log"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
 
+func TestMain(m *testing.M) {
+	_, filename, _, _ := runtime.Caller(0)
+	godotenv.Load(filepath.Join(filepath.Dir(filename), "..", "..", "..", "goyser", ".env"))
+	os.Exit(m.Run())
+}
+
 func TestGeyser(t *testing.T) {
 	var ctx = context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 
 	fumaroleDialURL, ok := os.LookupEnv("FUMAROLE_GRPC")
 	assert.True(t, ok)
@@ -50,6 +60,8 @@ func TestGeyser(t *testing.T) {
 	assert.NoError(t, err)
 
 	for data := range stream.Ch {
-		log.Println(time.Now().Unix(), data)
+		if data != nil {
+			break
+		}
 	}
 }
