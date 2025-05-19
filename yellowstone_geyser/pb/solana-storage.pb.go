@@ -1095,7 +1095,7 @@ type Reward struct {
 	Pubkey      string     `protobuf:"bytes,1,opt,name=pubkey,proto3" json:"pubkey,omitempty"`
 	Lamports    int64      `protobuf:"varint,2,opt,name=lamports,proto3" json:"lamports,omitempty"`
 	PostBalance uint64     `protobuf:"varint,3,opt,name=post_balance,json=postBalance,proto3" json:"post_balance,omitempty"`
-	RewardType  RewardType `protobuf:"varint,4,opt,name=reward_type,json=rewardType,proto3,enum=solana.storage.ConfirmedBlock.RewardType" json:"reward_type,omitempty"`
+	RewardType  RewardType `protobuf:"varint,4,opt,name=reward_type,json=rewardType,proto3,enum=solana.storage.yellowstone.ConfirmedBlock.RewardType" json:"reward_type,omitempty"`
 	Commission  string     `protobuf:"bytes,5,opt,name=commission,proto3" json:"commission,omitempty"`
 }
 
@@ -1631,7 +1631,7 @@ func file_solana_storage_proto_rawDescGZIP() []byte {
 var file_solana_storage_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_solana_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_solana_storage_proto_goTypes = []any{
-	(RewardType)(0),                   // 0: solana.storage.ConfirmedBlock.RewardType
+	(RewardType)(0),                   // 0: solana.storage.yellowstone.ConfirmedBlock.RewardType
 	(*ConfirmedBlock)(nil),            // 1: solana.storage.ConfirmedBlock.ConfirmedBlock
 	(*ConfirmedTransaction)(nil),      // 2: solana.storage.ConfirmedBlock.ConfirmedTransaction
 	(*Transaction)(nil),               // 3: solana.storage.ConfirmedBlock.Transaction
@@ -1672,7 +1672,7 @@ var file_solana_storage_proto_depIdxs = []int32{
 	14, // 16: solana.storage.ConfirmedBlock.TransactionStatusMeta.return_data:type_name -> solana.storage.ConfirmedBlock.ReturnData
 	10, // 17: solana.storage.ConfirmedBlock.InnerInstructions.instructions:type_name -> solana.storage.ConfirmedBlock.InnerInstruction
 	13, // 18: solana.storage.ConfirmedBlock.TokenBalance.ui_token_amount:type_name -> solana.storage.ConfirmedBlock.UiTokenAmount
-	0,  // 19: solana.storage.ConfirmedBlock.Reward.reward_type:type_name -> solana.storage.ConfirmedBlock.RewardType
+	0,  // 19: solana.storage.ConfirmedBlock.Reward.reward_type:type_name -> solana.storage.yellowstone.ConfirmedBlock.RewardType
 	15, // 20: solana.storage.ConfirmedBlock.Rewards.rewards:type_name -> solana.storage.ConfirmedBlock.Reward
 	19, // 21: solana.storage.ConfirmedBlock.Rewards.num_partitions:type_name -> solana.storage.ConfirmedBlock.NumPartitions
 	22, // [22:22] is the sub-list for method output_type
